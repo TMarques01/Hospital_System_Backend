@@ -20,14 +20,23 @@ StatusCodes = {
 
 def db_connection():
     db = psycopg2.connect(
-        user='aulaspl',
-        password='aulaspl',
+        user='postgres',
+        password='postgres',
         host='localhost',
         port='5432',
         database='projeto'
     )
 
     return db
+
+
+def check_contacto(numero):
+    try:
+        numero = str(numero)  
+        numero = numero.replace(" ", "")
+        return len(numero) == 9 and numero.isdigit() and numero[0] != '0'
+    except:
+        return False
 
 @app.route('/')
 def landing_page():
@@ -41,8 +50,9 @@ def landing_page():
     <br/>
     """
 
-@app.route("/register/patient", methods=["POST"])
+@app.route("/register/patient/", methods=["POST"])
 def register_patient():
+    logger.info('POST /register/patient')
 
     try:
         payload = request.get_json()
@@ -54,10 +64,9 @@ def register_patient():
 
     message = {}
 
-    if "id" in payload and "nome" in payload and "contact" in payload and "email" in payload and "address" in payload and "password" in payload and "username" in payload and "historic" in payload:
+    if "nome" in payload and "contact" in payload and "email" in payload and "address" in payload and "password" in payload and "username" in payload and "historic" in payload:
         logger.debug(f'POST /projeto/register/patient - payload: {payload}')
 
-        id = payload["id"]
         nome = payload["nome"]
         contact = payload["contact"]
         email = payload["email"]
@@ -66,8 +75,6 @@ def register_patient():
         username = payload["username"]
         historic = payload["historic"]
 
-        get_id = "SELECT id FROM person WHERE id = %d"
-        values_id = (id,)
         get_contact = "SELECT contact FROM person WHERE contact = %d"
         values_contact = (contact,)
         get_email =  "SELECT email FROM person WHERE email like %s"
@@ -78,18 +85,46 @@ def register_patient():
         try:
             with db_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(get_id, values_id)
+                    cursor.execute(get_contact, values_contact)
+                    if cursor.rowcount == 0:
+                        cursor.execute(get_email, values_email)
+                        if cursor.rowcount == 0:
+                            cursor.execute(get_username, values_username)
+                            if cursor.rowcount == 0:
 
-                    if cursor.rowcount == 1:
-                        cursor.execute(get_contact, values_contact)
+                                # get the max id to increment 1
+                                id_query = "SELECT MAX(id) AS max_id FROM person"
+                                cursor.execute(id_query)
+                                max_id = cursor.fetchone()[0]
+                                if max_id is None:
+                                    id = 0
+                                else:
+                                    id = max_id + 1
 
-                        if cursor.rowcount == 1:
-                            cursor.execute(get_email, values_email)
-                    else:
+                                query_principal = "INSERT INTO person (id, nome, contact, address, email, password, username) VALUES (%d, %s, %d, %s, %s, %s, %s)"
+                                values_query = (id, nome, contact, address, email, password, username,)
+                                cursor.execute(query_principal, values_query)
 
+                                query_pacient = "INSERT INTO pacient (historic, person_id) VALUES (%s, %d)"
+                                values_pacient = (historic, id,)
+                                cursor.execute(query_pacient, values_pacient)
+
+                                conn.commit()
+
+                                message['status'] = StatusCodes['success']
+                                message['results'] = id
+                                message['message'] = "Registration Completed"
+
+                            else:
+                                message["status"] = StatusCodes['api_error']
+                                message["error"] = "username already exists!"                                    
+
+                        else:
+                            message["status"] = StatusCodes['api_error']
+                            message["error"] = "email already exists!"
+                    else :
                         message["status"] = StatusCodes['api_error']
-                        message["error"] = "ID already exists!"
-
+                        message["error"] = "contact already exists!"
         except (Exception, psycopg2.DatabaseError) as error:
             return jsonify({
                 "status": StatusCodes['internal_error'],
@@ -103,7 +138,7 @@ def register_patient():
             if conn is not None:
                 conn.close()
 
-    return jsonify(message)
+    return flask.jsonify(message)
 
 
 
