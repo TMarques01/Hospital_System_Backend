@@ -1,0 +1,126 @@
+{
+	"info": {
+		"_postman_id": "4a24681f-2a0b-491f-bbdd-2ca9e969af46",
+		"name": "Projeto",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "34038053"
+	},
+	"item": [
+		{
+			"name": "Register Pacient",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"nome\": \"Maria Costa\",\r\n    \"contact\": \"931234567\",\r\n    \"email\": \"mariacosta@example.com\",\r\n    \"address\": \"Avenida da Liberdade, 45, Porto, 4000-322\",\r\n    \"password\": \"senhaultrasegura456\",\r\n    \"username\": \"mariacosta\",\r\n    \"historic\": \"Histórico de asma\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/register/patient",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"register",
+						"patient"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Register Doctor",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"nome\": \"Dr. Pedro Oliveira\",\r\n    \"contact\": \"934567891\",\r\n    \"email\": \"pedrooliveira@example.com\",\r\n    \"address\": \"Rua de Santa Catarina, 200, Porto, 4000-012\",\r\n    \"password\": \"senhasegura123\",\r\n    \"username\": \"pedrooliveira\",\r\n    \"data\": \"2024-05-19 08:30:00\",\r\n    \"duration\": \"2027-05-19\",\r\n    \"medical_license\": \"ML987654\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/register/doctor",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"register",
+						"doctor"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Register Assistant",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"nome\": \"Ana Pereira\",\r\n    \"contact\": \"921234567\",\r\n    \"email\": \"anapereira@example.com\",\r\n    \"address\": \"Rua da Alegria, 45, Porto, 4000-322\",\r\n    \"password\": \"senhasegura789\",\r\n    \"username\": \"anapereira\",\r\n    \"data\": \"2024-05-19 08:30:00\",\r\n    \"duration\": \"2025-05-19\",\r\n    \"license\": \"A12345\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/register/assistant",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"register",
+						"assistant"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Register Nurse",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"nome\": \"Carlos Mendes\",\r\n    \"contact\": \"935678912\",\r\n    \"email\": \"carlosmendes@example.com\",\r\n    \"address\": \"Avenida dos Aliados, 100, Porto, 4000-042\",\r\n    \"password\": \"senhasegura456\",\r\n    \"username\": \"carlosmendes\",\r\n    \"data\": \"2024-05-19 08:30:00\",\r\n    \"duration\": \"2026-05-19\",\r\n    \"category\": \"Senior\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/register/nurse",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"register",
+						"nurse"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
