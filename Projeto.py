@@ -17,8 +17,9 @@ StatusCodes = {
 }
 
 
-
+# ====================================
 # DB acess
+# ====================================
 def db_connection():
     db = psycopg2.connect(
         user='aulaspl',
@@ -31,8 +32,9 @@ def db_connection():
     return db
 
 
-
+# ====================================
 # DATA Verification and AUX Functions
+# ====================================
 def check_contacto(numero):
     try:
         numero = str(numero)  
@@ -172,7 +174,7 @@ def register(person_type):
                                                         cursor.execute(query_contract, values_contract)
 
                                                         query_assistant = "INSERT INTO assistants (license, contract_employee_person_id) VALUES (%s, %s)"
-                                                        values_assistant = (license, id)
+                                                        values_assistant = (license, id,)
                                                         cursor.execute(query_assistant, values_assistant)
 
                                                         conn.commit()
@@ -271,96 +273,6 @@ def register(person_type):
     else:
         message["status"] = StatusCodes['api_error']
         message["error"] = "Wrong parameter in End Point!"
-
-    return flask.jsonify(message)
-
-
-
-@app.route("/register/assistant", methods=["POST"])
-def register_patient():
-    logger.info('POST /register/assistant')
-
-    try:
-        payload = flask.request.get_json()
-    except:
-        return flask.jsonify({
-            "status": StatusCodes['api_error'],
-            "error": "No json"
-        })
-
-    message = {}
-
-    if "nome" in payload and "contact" in payload and "email" in payload and "address" in payload and "password" in payload and "username" in payload and "historic" in payload:
-        logger.debug(f'POST /projeto/register/patient - payload: {payload}')
-
-        nome = payload["nome"]
-        contact = payload["contact"]
-        email = payload["email"]
-        address = payload["address"]
-        password = hashlib.sha256(payload["password"].encode()).hexdigest() # encode the message
-        username = payload["username"]
-        historic = payload["historic"]
-
-        get_contact = "SELECT contact FROM person WHERE contact = %s"
-        values_contact = (contact,)
-        get_email =  "SELECT email FROM person WHERE email = %s"
-        values_email = (email,)
-        get_username = "SELECT username FROM person WHERE username = %s"
-        values_username = (username,)
-
-        try:
-            with db_connection() as conn:
-                with conn.cursor() as cursor:
-                    if check_contacto(contact): # verify if the contact is with the correct format
-                        cursor.execute(get_contact, values_contact)
-                        if cursor.rowcount == 0: # contact is already used
-                            cursor.execute(get_email, values_email)
-                            if cursor.rowcount == 0: # email is already used
-                                cursor.execute(get_username, values_username)
-                                if cursor.rowcount == 0: # username is already used
-
-                                    # get the max id to increment 1
-                                    id = get_id(cursor)
-
-                                    query_principal = "INSERT INTO person (id, nome, contact, address, email, password, username) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                                    values_query = (id, nome, contact, address, email, password, username,)
-                                    cursor.execute(query_principal, values_query)
-
-                                    query_pacient = "INSERT INTO pacient (historic, person_id) VALUES (%s, %s)"
-                                    values_pacient = (historic, id,)
-                                    cursor.execute(query_pacient, values_pacient)
-
-                                    conn.commit()
-
-                                    message['status'] = StatusCodes['success']
-                                    message['results'] = id
-                                    message['message'] = "Registration Completed"
-
-                                else:
-                                    message["status"] = StatusCodes['api_error']
-                                    message["error"] = "username already exists!"                                    
-                            else:
-                                message["status"] = StatusCodes['api_error']
-                                message["error"] = "email already exists!"
-                        else:
-                            message["status"] = StatusCodes['api_error']
-                            message["error"] = "contact already exists!"
-                    else:
-                        message["status"] = StatusCodes['api_error']
-                        message["error"] = "Contact with wrong format!"
-        except (Exception, psycopg2.DatabaseError) as error:
-            logger.error(f'POST /register/pacient - error: {error}')
-            message = {
-                "status": StatusCodes['internal_error'],
-                "error": str(error)
-                }
-    
-            # an error occurred, rollback
-            conn.rollback()
-
-        finally:
-            if conn is not None:
-                conn.close()
 
     return flask.jsonify(message)
 
