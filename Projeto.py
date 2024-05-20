@@ -8,6 +8,8 @@ import jwt
 import random
 import hashlib 
 
+secret_key = 'VamosTerBoaNota'
+
 app = flask.Flask(__name__)
 
 StatusCodes = {
@@ -81,9 +83,9 @@ def landing_page():
     <br/>
     """
 
-
-
+# ====================================
 # End Points
+# ====================================
 @app.route("/register/<person_type>", methods=["POST"])
 def register(person_type):
 
@@ -277,6 +279,62 @@ def register(person_type):
     return flask.jsonify(message)
 
 
+@app.route("/user", methods=["PUT"])
+def login():
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['internal_error'],
+            "error": "No JSON"
+        })
+
+    if "username" not in payload or "password" not in payload:
+        return flask.appcontext_pushedjsonify({
+            "code": StatusCodes['api_error'],
+            "message": "Wrong parameters"
+        })
+
+    logger.info(f'PUT /user')
+    nome_utilizador = payload["username"]
+    password = hashlib.sha256(payload["password"].encode()).hexdigest()
+    query = "SELECT password FROM person WHERE username = %s"
+    message = {}
+
+    try:
+        with db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (nome_utilizador,))
+
+                if cursor.rowcount == 0:
+                    message["status"] = StatusCodes['api_error']
+                    message["error"] = f"No user with that credentials: {nome_utilizador}"
+                else:
+                    row = cursor.fetchone()
+                    if password == row[0]:
+                        # get the token
+                        username = {'username': nome_utilizador}
+                        token = jwt.encode(username, secret_key, algorithm='HS256')
+                        message["status"] = StatusCodes['success']
+                        message["token"] = token
+                    else:
+                        message["status"] = StatusCodes['api_error']
+                        message["error"] = "Wrong Password"
+                        
+    except (Exception, psycopg2.DatabaseError) as error:
+        
+        return flask.jsonify({
+            "status": StatusCodes['internal_error'],
+            "error": str(error)
+        })
+    
+
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return flask.jsonify(message)
+    
 
 if __name__ == '__main__':
 
