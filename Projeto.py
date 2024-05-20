@@ -37,6 +37,8 @@ def db_connection():
 # ====================================
 # DATA Verification and AUX Functions
 # ====================================
+
+# verify if the contact is with the correct format
 def check_contacto(numero):
     try:
         numero = str(numero)  
@@ -44,7 +46,6 @@ def check_contacto(numero):
         return len(numero) == 9 and numero.isdigit() and numero[0] != '0'
     except:
         return False
-
 
 
 # get the max id and increment 1
@@ -69,6 +70,39 @@ def get_id(cursor, person_type):
 
     return id
 
+
+# get the person type based on the username
+def get_person_type(username):
+    query = """
+    SELECT person.id, person.username, 
+    CASE 
+        WHEN assistants.contract_employee_person_id IS NOT NULL THEN 'assistants'
+        WHEN doctor.contract_employee_person_id IS NOT NULL THEN 'doctor'
+        WHEN nurse.contract_employee_person_id IS NOT NULL THEN 'nurse'	
+        ELSE 'pacient'
+    END as specification
+    FROM person
+    LEFT JOIN assistants ON person.id = assistants.contract_employee_person_id
+    LEFT JOIN doctor ON person.id = doctor.contract_employee_person_id
+    LEFT JOIN nurse ON person.id = nurse.contract_employee_person_id
+    WHERE person.username = %s;
+    """
+    try:
+        with db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (username,))
+                row = cursor.fetchone()
+                if row is None:
+                    response = {'status': StatusCodes['api_error'], 'error': 'User not found'}
+                else:     
+                    # specification = [id, specification] 
+                    specification = []
+                    specification.append(row[0])
+                    specification.append(row[2])
+
+    except Exception as e:
+        response = {'status': StatusCodes['api_error'], 'error': str(e)}
+    return specification
 
 
 @app.route('/')
@@ -335,6 +369,78 @@ def login():
 
     return flask.jsonify(message)
     
+
+# TO DO: 
+#       check if the doctor is available 
+#       find a room available
+#       use the trigger
+@app.route("/appointment", methods=["POST"])
+def create_appointment():
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+    
+    message = {}
+
+    if "token" in payload:
+        decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+        username = decoded_token["username"]
+        person_type = get_person_type(username)
+        if person_type[1] == "assistant":
+    
+            if "date_start" in payload and "date_end" in payload and "n_room" in payload and  "doctor_contract_employee_person_id" in payload and "pacient_person_id" in payload:
+
+                date_start = payload["date_start"]
+                date_end = payload["date_end"]
+                n_room = payload["n_room"]
+                assistants_contract_employee_person_id = payload["assistants_contract_employee_person_id"]
+                doctor_contract_employee_person_id = payload["doctor_contract_employee_person_id"]
+                pacient_person_id = person_type[0]
+
+                # temporay query
+                query = "INSERT INTO appointment (date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id) VALUES (%s, %s, %s, %s, %s, %s)"
+                values = (date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id)
+
+                try:
+                    with db_connection() as conn:
+                        with conn.cursor() as cursor:
+                            # check if the date is correct
+                                #if the doctor is available
+                                    # if the room is available
+                                        # create the appointment
+                                        # use the trigger
+                            cursor.execute(query, values)
+                            conn.commit()
+
+                            message['status'] = StatusCodes['success']
+                            message['message'] = "Appointment created"
+
+                except (Exception, psycopg2.DatabaseError) as error:
+                    message = {
+                        "status": StatusCodes['internal_error'],
+                        "error": str(error)
+                    }
+                    conn.rollback()
+
+                finally:
+                    if conn is not None:
+                        conn.close()
+            else:
+                message["status"] = StatusCodes['api_error']
+                message["error"] = "Wrong parameter in JSON file for appointment!"
+        else:
+            message["status"] = StatusCodes['api_error']
+            message["error"] = "You don't have permission to do this action!"
+    else:
+        message["status"] = StatusCodes['api_error']
+        message["error"] = "Token not found!"
+
+    return flask.jsonify(message)
+
 
 if __name__ == '__main__':
 
