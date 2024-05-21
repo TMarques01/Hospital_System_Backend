@@ -7,6 +7,8 @@ import time
 import jwt
 import random
 import hashlib 
+from datetime import datetime
+
 
 secret_key = 'VamosTerBoaNota'
 
@@ -46,7 +48,29 @@ def check_contacto(numero):
         return len(numero) == 9 and numero.isdigit() and numero[0] != '0'
     except:
         return False
+    
 
+def check_date(date_string, format="%Y-%m-%d"):
+    try:
+        datetime.strptime(date_string, format)
+        return True
+    except ValueError:
+        return False
+
+def compare_dates(date1, date2, format="%Y-%m-%d"): #d1 aconteceu antes de d2
+    try:
+        d1 = datetime.strptime(date1, format)
+        d2 = datetime.strptime(date2, format)
+        return True if d1 < d2 else False
+    except ValueError:
+        return None
+
+def is_digit(n):
+    try:
+        int(n)
+        return True
+    except ValueError:
+        return False
 
 # get the max id and increment 1
 def get_id(cursor, person_type):
@@ -71,7 +95,7 @@ def get_id(cursor, person_type):
     return id
 
 
-# get the person type based on the username (Return the id and the specification [doctor, nurse, assistant, pacient])
+# get the person type based on the username
 def get_person_type(username):
     query = """
     SELECT person.id, person.username, 
@@ -104,7 +128,6 @@ def get_person_type(username):
         response = {'status': StatusCodes['api_error'], 'error': str(e)}
     return specification
 
-
 # check if the doctor is available in the date (Return true if is available and false if is not available)
 def is_doctor_available(doctor_id, date_start, date_end):
     query = """ 
@@ -127,6 +150,25 @@ def is_doctor_available(doctor_id, date_start, date_end):
         print(str(error))
         return False
 
+def is_room_avaliable(cursor, n_room, date_start, date_end, query, values):
+    query_check_room = """
+        SELECT COUNT(*)
+        FROM appointment
+        WHERE n_room = %s AND
+        (date_start < %s AND date_end > %s OR
+        date_start < %s AND date_end > %s OR
+        date_start >= %s AND date_end <= %s)
+    """
+    values_check_room = (n_room, date_end, date_start, date_start, date_end, date_start, date_end)
+
+    cursor.execute(query_check_room, values_check_room)
+    room_count = cursor.fetchone()[0]
+
+    if room_count == 0:
+        return True
+    else:
+        return False
+
 
 @app.route('/')
 def landing_page():
@@ -139,7 +181,6 @@ def landing_page():
     BD 2022 Team<br/>
     <br/>
     """
-
 
 # ====================================
 # End Points
@@ -162,7 +203,7 @@ def register(person_type):
         logger.debug(f'person_type: {person_type}')
         logger.info(f'POST /register/{person_type}')
 
-        if "nome" in payload and "contact" in payload and "email" in payload and "address" in payload and "password" in payload and "username" in payload:
+        if "nome" in payload and "contact" in payload and "email" in payload and "address" in payload and "password" in payload and "username" in payload :
 
             nome = payload["nome"]
             contact = payload["contact"]
@@ -416,32 +457,44 @@ def create_appointment():
         person_type = get_person_type(username)
         if person_type[1] == "assistant":
     
-            if "date_start" in payload and "date_end" in payload and "n_room" in payload and  "doctor_contract_employee_person_id" in payload and "pacient_person_id" in payload:
+            if "date_start" in payload and "date_end" in payload and "n_room" in payload and  "doctor" in payload and "pacient" in payload:
 
                 date_start = payload["date_start"]
                 date_end = payload["date_end"]
                 n_room = payload["n_room"]
-                assistants_contract_employee_person_id = payload["assistants_contract_employee_person_id"]
-                doctor_contract_employee_person_id = payload["doctor_contract_employee_person_id"]
-                pacient_person_id = person_type[0]
+                doctor_contract_employee_person_id = payload["doctor"]
+                pacient_person_id = payload["pacient"]
+                assistant_person_id = person_type[0]
 
                 # temporay query
                 query = "INSERT INTO appointment (date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id) VALUES (%s, %s, %s, %s, %s, %s)"
-                values = (date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id)
-
+                values = (date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,)
+				#atraves de querys, buscar o "assistants_contract_employee_person_id"  
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
-                            # check if the date is correct
-                                #if the doctor is available
-                                    # if the room is available
-                                        # create the appointment
-                                        # use the trigger
-                            cursor.execute(query, values)
-                            conn.commit()
+                            if check_date(date_start) & check_date(date_end) & is_digit(n_room) & compare_dates(date_start, date_end):
+                                if is_doctor_available(doctor_contract_employee_person_id, date_start, date_end):
+                                    if is_room_avaliable(cursor, n_room, date_start, date_end, query, values):
+                                        cursor.execute(query, values)
+										conn.commit()
+										message['status'] = StatusCodes['success']
+										message['message'] = "Appointment created"
+										#CRIAR O APPOINTMENT
+                                        #USAR O TRIGGER
 
-                            message['status'] = StatusCodes['success']
-                            message['message'] = "Appointment created"
+									else:
+										# The room is not available, return an error message
+										message['status'] = StatusCodes['api_error']
+										message['message'] = "Room is not available"
+                                else:
+									# The room is not available, return an error message
+									message['status'] = StatusCodes['api_error']
+									message['message'] = "Doctor is not available"
+                            else:
+								# The room is not available, return an error message
+								message['status'] = StatusCodes['api_error']
+								message['message'] = "Data or Room not valid"
 
                 except (Exception, psycopg2.DatabaseError) as error:
                     message = {
