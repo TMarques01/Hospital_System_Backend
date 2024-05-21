@@ -51,20 +51,20 @@ def check_contacto(numero):
     
 
 # check if the date is in the correct format
-def check_date(date_string, format="%Y-%m-%d"):
+def check_date(date, format="%Y-%m-%d %H:%M:%S"):
     try:
-        datetime.strptime(date_string, format)
+        datetime.strptime(date, format)
         return True
     except ValueError:
         return False
 
 
 # compare two dates if d1 is before d2
-def compare_dates(date1, date2, format="%Y-%m-%d"):
+def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
     try:
         d1 = datetime.strptime(date1, format)
         d2 = datetime.strptime(date2, format)
-        return True if d1 < d2 else False
+        return date1 if d1 < d2 else date2
     except ValueError:
         return None
 
@@ -106,7 +106,7 @@ def get_person_type(username):
     query = """
     SELECT person.id, person.username, 
     CASE 
-        WHEN assistants.contract_employee_person_id IS NOT NULL THEN 'assistants'
+        WHEN assistants.contract_employee_person_id IS NOT NULL THEN 'assistant'
         WHEN doctor.contract_employee_person_id IS NOT NULL THEN 'doctor'
         WHEN nurse.contract_employee_person_id IS NOT NULL THEN 'nurse'	
         ELSE 'pacient'
