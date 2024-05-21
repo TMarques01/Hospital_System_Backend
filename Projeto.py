@@ -542,6 +542,70 @@ def create_appointment():
     return flask.jsonify(message)
 
 
+@app.route('/appointment/<patient_user_id>', methods=['GET'])
+def see_appointament(patient_user_id):
+    logger.info('GET /appointament/<patient_user_id>')
+    logger.debug(f'patient_user_id: {patient_user_id}')
+    
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+ 
+    try:
+        conn = db_connection()
+        cur = conn.cursor()
+    
+        if "token" in payload:
+            decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+            username = decoded_token["username"]
+            person_type = get_person_type(username)
+            
+            if person_type[1] == "assistant":
+                
+                query =("""SELECT a.id, a.date_start, a.date_end, a.n_room, dp.nome AS doctor_name
+               			FROM appointment a
+                		JOIN doctor doc ON a.doctor_contract_employee_person_id = doc.contract_employee_person_id
+                		JOIN person dp ON doc.contract_employee_person_id = dp.id
+               			WHERE a.pacient_person_id = %s""")
+                
+                try:
+                    cur.execute(query, (patient_user_id,))
+                    rows = cur.fetchall()
+                    results = []
+                    
+                    for row in rows:
+                        appointment = {'id': row[0], 'date_start': row[1], 'date_end': row[2], 'room': row[3], 'doctor_name': row[4]}
+                        results.append(appointment)
+                        logger.debug(row)
+
+                    message = {'status': StatusCodes['success'], 'results': results}
+
+                except (Exception, psycopg2.DatabaseError) as error:
+                    message = {
+                        "status": StatusCodes['internal_error'],
+                        "error": str(error)
+                    }
+                    conn.rollback()
+
+            else:
+                message["status"] = StatusCodes['api_error']
+                message["error"] = "You don't have permission to do this action!"
+        else:
+            message["status"] = StatusCodes['api_error']
+            message["error"] = "Token not found!"
+    
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return flask.jsonify(message)
+
+
+
 if __name__ == '__main__':
 
     # set up logging
@@ -560,3 +624,9 @@ if __name__ == '__main__':
     port = 8080
     app.run(host=host, debug=True, threaded=True, port=port)
     logger.info(f'API v1.0 online: http://{host}:{port}')
+    
+    
+    
+    
+
+
