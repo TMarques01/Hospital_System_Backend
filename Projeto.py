@@ -542,7 +542,7 @@ def create_appointment():
     return flask.jsonify(message)
 
 
-@app.route('/appointments/<patient_user_id>', methods=['GET'])
+@app.route('/appointments/<int:patient_user_id>', methods=['GET'])
 def see_appointment(patient_user_id):
     logger.info('GET /appointament/<patient_user_id>')
     logger.debug(f'patient_user_id: {patient_user_id}')
@@ -566,7 +566,7 @@ def see_appointment(patient_user_id):
             username = decoded_token["username"]
             person_type = get_person_type(username)
             
-            if person_type[1] == "assistant" or (person_type[1] == "pacient" and int(person_type[0]) == int(patient_user_id)):
+            if person_type[1] == "assistant" or (person_type[1] == "pacient" and person_type[0] == patient_user_id):
                 
                 query =("""SELECT a.id, a.date_start, a.date_end, a.n_room, dp.nome AS doctor_name
                			FROM appointment a
