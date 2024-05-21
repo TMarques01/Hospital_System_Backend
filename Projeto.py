@@ -51,9 +51,10 @@ def check_contacto(numero):
     
 
 # check if the date is in the correct format
-def check_date(date_string, format="%Y-%m-%d %H:%M:%S"):
+def check_date(date, format="%Y-%m-%d %H:%M:%S"):
+
     try:
-        datetime.strptime(date_string, format)
+        datetime.strptime(date, format)
         return True
     except ValueError:
         return False
