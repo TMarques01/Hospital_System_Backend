@@ -160,7 +160,7 @@ def is_doctor_available(doctor_id, date_start, date_end):
 
 
 # check if the room is available in the date (Return true if is available and false if is not available)
-def is_room_avaliable(cursor, n_room, date_start, date_end, query, values):
+def is_room_avaliable(cursor, n_room, date_start, date_end):
     query_check_room = """
         SELECT COUNT(*)
         FROM appointment
@@ -431,7 +431,7 @@ def login():
                         message["error"] = "Wrong Password"
                         
     except (Exception, psycopg2.DatabaseError) as error:
-        
+        logger.error(f'PUT /user - error: {error}')
         return flask.jsonify({
             "status": StatusCodes['internal_error'],
             "error": str(error)
@@ -472,26 +472,34 @@ def create_appointment():
                 pacient_person_id = payload["pacient"]
                 assistant_person_id = person_type[0]
 
-                query = "INSERT INTO appointment (date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id) VALUES (%s, %s, %s, %s, %s, %s)"
-                values = (date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,)
-
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
                             if check_date(date_start) and check_date(date_end) and is_digit(n_room) and compare_dates(date_start, date_end):
                                 if is_doctor_available(doctor_contract_employee_person_id, date_start, date_end):
-                                    if is_room_avaliable(cursor, n_room, date_start, date_end, query, values):
-                    
+                                    if is_room_avaliable(cursor, n_room, date_start, date_end):
+
+                                        logger.debug(f'POST /appointment - payload: {payload}')
+
+                                        # Get the current maximum appointment ID
+                                        cursor.execute("SELECT MAX(id) FROM appointment;")
+                                        appointment_id = cursor.fetchone()[0]
+                                        if appointment_id is None:
+                                            appointment_id = 0
+                                        
+                                        appointment_id += 1
+                                        billing_id = 0 # using the default billing_id
+                                        
+                                        # Now you can use appointment_id and billing_id in your INSERT statement
+                                        query = """
+                                            INSERT INTO appointment 
+                                            (id, date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id, billing_id) 
+                                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                        """
+                                        values = (appointment_id, date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id, billing_id)
+                                        
                                         cursor.execute(query, values)
-                                        appointment_id = cursor.fetchone()[0]  # Get the ID of the created appointment
-                                        conn.commit()
-                    
-                                        # Get the ID of the created billing
-                                        cursor.execute("SELECT create_billing_on_appointment();")
-                                        billing_id = cursor.fetchone()[0]
-                    
-                                        # Update the appointment with the billing ID
-                                        cursor.execute("UPDATE appointment SET billing_id = %s WHERE id = %s", (billing_id, appointment_id))
+
                                         conn.commit()
                     
                                         message['status'] = StatusCodes['success']
@@ -511,6 +519,7 @@ def create_appointment():
                                 message['message'] = "Data or Room not valid"
 
                 except (Exception, psycopg2.DatabaseError) as error:
+                    logger.error(f'POST /appointment - error: {error}')
                     message = {
                         "status": StatusCodes['internal_error'],
                         "error": str(error)
