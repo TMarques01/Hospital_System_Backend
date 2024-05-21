@@ -543,7 +543,7 @@ def create_appointment():
 
 
 @app.route('/appointment/<patient_user_id>', methods=['GET'])
-def see_appointament(patient_user_id):
+def see_appointment(patient_user_id):
     logger.info('GET /appointament/<patient_user_id>')
     logger.debug(f'patient_user_id: {patient_user_id}')
     
