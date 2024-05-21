@@ -51,7 +51,7 @@ def check_contacto(numero):
     
 
 # check if the date is in the correct format
-def check_date(date_string, format="%Y-%m-%d"):
+def check_date(date_string, format="%Y-%m-%d %H:%M:%S"):
     try:
         datetime.strptime(date_string, format)
         return True
@@ -60,11 +60,11 @@ def check_date(date_string, format="%Y-%m-%d"):
 
 
 # compare two dates if d1 is before d2
-def compare_dates(date1, date2, format="%Y-%m-%d"):
+def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
     try:
         d1 = datetime.strptime(date1, format)
         d2 = datetime.strptime(date2, format)
-        return True if d1 < d2 else False
+        return date1 if d1 < d2 else date2
     except ValueError:
         return None
 
@@ -106,7 +106,7 @@ def get_person_type(username):
     query = """
     SELECT person.id, person.username, 
     CASE 
-        WHEN assistants.contract_employee_person_id IS NOT NULL THEN 'assistants'
+        WHEN assistants.contract_employee_person_id IS NOT NULL THEN 'assistant'
         WHEN doctor.contract_employee_person_id IS NOT NULL THEN 'doctor'
         WHEN nurse.contract_employee_person_id IS NOT NULL THEN 'nurse'	
         ELSE 'pacient'
@@ -138,11 +138,11 @@ def get_person_type(username):
 # check if the doctor is available in the date (Return true if is available and false if is not available)
 def is_doctor_available(doctor_id, date_start, date_end):
     query = """ 
-    SELECT 1 FROM surgery
+    SELECT 1 FROM surgeries_nurse_role
     WHERE doctor_contract_employee_person_id = %s
     AND (date_start, date_end) OVERLAPS (%s, %s)
     UNION ALL
-    SELECT 1 FROM consultation
+    SELECT 1 FROM appointment
     WHERE doctor_contract_employee_person_id = %s
     AND (date_start, date_end) OVERLAPS (%s, %s)
     LIMIT 1;
@@ -444,10 +444,6 @@ def login():
     return flask.jsonify(message)
     
 
-# TO DO: 
-#       check if the doctor is available 
-#       find a room available
-#       use the trigger
 @app.route("/appointment", methods=["POST"])
 def create_appointment():
     try:
@@ -476,22 +472,32 @@ def create_appointment():
                 assistant_person_id = person_type[0]
 
                 query = "INSERT INTO appointment (date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id) VALUES (%s, %s, %s, %s, %s, %s)"
-                values = (date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,) 
+                values = (date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,)
+
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
                             if check_date(date_start) and check_date(date_end) and is_digit(n_room) and compare_dates(date_start, date_end):
                                 if is_doctor_available(doctor_contract_employee_person_id, date_start, date_end):
                                     if is_room_avaliable(cursor, n_room, date_start, date_end, query, values):
-
+                    
                                         cursor.execute(query, values)
+                                        appointment_id = cursor.fetchone()[0]  # Get the ID of the created appointment
                                         conn.commit()
+                    
+                                        # Get the ID of the created billing
+                                        cursor.execute("SELECT create_billing_on_appointment();")
+                                        billing_id = cursor.fetchone()[0]
+                    
+                                        # Update the appointment with the billing ID
+                                        cursor.execute("UPDATE appointment SET billing_id = %s WHERE id = %s", (billing_id, appointment_id))
+                                        conn.commit()
+                    
                                         message['status'] = StatusCodes['success']
                                         message['message'] = "Appointment created"
-                                        #USAR O TRIGGER
-                                        
+                                        message['appointment_id'] = appointment_id
                                     else:
-										# The room is not available, return an error message
+                                        # The room is not available, return an error message
                                         message['status'] = StatusCodes['api_error']
                                         message['message'] = "Room is not available"
                                 else:
