@@ -71,7 +71,7 @@ def get_id(cursor, person_type):
     return id
 
 
-# get the person type based on the username
+# get the person type based on the username (Return the id and the specification [doctor, nurse, assistant, pacient])
 def get_person_type(username):
     query = """
     SELECT person.id, person.username, 
@@ -105,6 +105,29 @@ def get_person_type(username):
     return specification
 
 
+# check if the doctor is available in the date (Return true if is available and false if is not available)
+def is_doctor_available(doctor_id, date_start, date_end):
+    query = """ 
+    SELECT 1 FROM surgery
+    WHERE doctor_contract_employee_person_id = %s
+    AND (date_start, date_end) OVERLAPS (%s, %s)
+    UNION ALL
+    SELECT 1 FROM consultation
+    WHERE doctor_contract_employee_person_id = %s
+    AND (date_start, date_end) OVERLAPS (%s, %s)
+    LIMIT 1;
+    """
+    try:
+        with db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (doctor_id, date_start, date_end, doctor_id, date_start, date_end))
+                row = cursor.fetchone()
+                return row is None
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(str(error))
+        return False
+
+
 @app.route('/')
 def landing_page():
     return """
@@ -116,6 +139,7 @@ def landing_page():
     BD 2022 Team<br/>
     <br/>
     """
+
 
 # ====================================
 # End Points
