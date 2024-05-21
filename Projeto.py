@@ -50,6 +50,7 @@ def check_contacto(numero):
         return False
     
 
+# check if the date is in the correct format
 def check_date(date_string, format="%Y-%m-%d"):
     try:
         datetime.strptime(date_string, format)
@@ -57,7 +58,9 @@ def check_date(date_string, format="%Y-%m-%d"):
     except ValueError:
         return False
 
-def compare_dates(date1, date2, format="%Y-%m-%d"): #d1 aconteceu antes de d2
+
+# compare two dates if d1 is before d2
+def compare_dates(date1, date2, format="%Y-%m-%d"):
     try:
         d1 = datetime.strptime(date1, format)
         d2 = datetime.strptime(date2, format)
@@ -65,12 +68,15 @@ def compare_dates(date1, date2, format="%Y-%m-%d"): #d1 aconteceu antes de d2
     except ValueError:
         return None
 
+
+# check if the value is a digit
 def is_digit(n):
     try:
         int(n)
         return True
     except ValueError:
         return False
+
 
 # get the max id and increment 1
 def get_id(cursor, person_type):
@@ -128,6 +134,7 @@ def get_person_type(username):
         response = {'status': StatusCodes['api_error'], 'error': str(e)}
     return specification
 
+
 # check if the doctor is available in the date (Return true if is available and false if is not available)
 def is_doctor_available(doctor_id, date_start, date_end):
     query = """ 
@@ -150,6 +157,8 @@ def is_doctor_available(doctor_id, date_start, date_end):
         print(str(error))
         return False
 
+
+# check if the room is available in the date (Return true if is available and false if is not available)
 def is_room_avaliable(cursor, n_room, date_start, date_end, query, values):
     query_check_room = """
         SELECT COUNT(*)
@@ -455,7 +464,7 @@ def create_appointment():
         decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
         username = decoded_token["username"]
         person_type = get_person_type(username)
-        if person_type[1] == "assistant":
+        if person_type[1] == "assistant": # verify if the user is an assistant
     
             if "date_start" in payload and "date_end" in payload and "n_room" in payload and  "doctor" in payload and "pacient" in payload:
 
@@ -466,35 +475,33 @@ def create_appointment():
                 pacient_person_id = payload["pacient"]
                 assistant_person_id = person_type[0]
 
-                # temporay query
                 query = "INSERT INTO appointment (date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id) VALUES (%s, %s, %s, %s, %s, %s)"
-                values = (date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,)
-				#atraves de querys, buscar o "assistants_contract_employee_person_id"  
+                values = (date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,) 
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
-                            if check_date(date_start) & check_date(date_end) & is_digit(n_room) & compare_dates(date_start, date_end):
+                            if check_date(date_start) and check_date(date_end) and is_digit(n_room) and compare_dates(date_start, date_end):
                                 if is_doctor_available(doctor_contract_employee_person_id, date_start, date_end):
                                     if is_room_avaliable(cursor, n_room, date_start, date_end, query, values):
-                                        cursor.execute(query, values)
-										conn.commit()
-										message['status'] = StatusCodes['success']
-										message['message'] = "Appointment created"
-										#CRIAR O APPOINTMENT
-                                        #USAR O TRIGGER
 
-									else:
+                                        cursor.execute(query, values)
+                                        conn.commit()
+                                        message['status'] = StatusCodes['success']
+                                        message['message'] = "Appointment created"
+                                        #USAR O TRIGGER
+                                        
+                                    else:
 										# The room is not available, return an error message
-										message['status'] = StatusCodes['api_error']
-										message['message'] = "Room is not available"
+                                        message['status'] = StatusCodes['api_error']
+                                        message['message'] = "Room is not available"
                                 else:
 									# The room is not available, return an error message
-									message['status'] = StatusCodes['api_error']
-									message['message'] = "Doctor is not available"
+                                    message['status'] = StatusCodes['api_error']
+                                    message['message'] = "Doctor is not available"
                             else:
 								# The room is not available, return an error message
-								message['status'] = StatusCodes['api_error']
-								message['message'] = "Data or Room not valid"
+                                message['status'] = StatusCodes['api_error']
+                                message['message'] = "Data or Room not valid"
 
                 except (Exception, psycopg2.DatabaseError) as error:
                     message = {
