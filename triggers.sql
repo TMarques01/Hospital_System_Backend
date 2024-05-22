@@ -1,7 +1,3 @@
--- Inserir uma entrada na tabela billing
-INSERT INTO billing (id, total, data_billing) 
-VALUES (0, 0, '1111-11-11');
-
 -- Selecionar dados da tabela person e realizar joins
 SELECT person.id, person.username, 
 CASE 
@@ -25,10 +21,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Remover o trigger existente se existir
 DROP TRIGGER IF EXISTS appointment_before_insert ON appointment;
 
--- Criar trigger para chamar a função create_billing_on_appointment antes de inserir um agendamento
 CREATE TRIGGER appointment_before_insert
 BEFORE INSERT ON appointment
 FOR EACH ROW
@@ -64,10 +58,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Remover o trigger existente se existir
 DROP TRIGGER IF EXISTS surgery_before_insert ON surgeries;
 
--- Criar trigger para chamar a função create_hospitalization_on_surgery antes de inserir uma cirurgia
 CREATE TRIGGER surgery_before_insert
 BEFORE INSERT ON surgeries
 FOR EACH ROW
