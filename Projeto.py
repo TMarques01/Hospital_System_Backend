@@ -214,9 +214,6 @@ def are_nurses_available(nurse_ids, date_start, date_end, type):
         return True
         
         
-
-
-
 # check if the room is available in the date (Return true if is available and false if is not available)
 def is_room_avaliable(cursor, n_room, date_start, date_end):
     query_check_room = """
@@ -718,13 +715,9 @@ def schedule_surgery(hospitalization_id=None):
                             if check_date(date_start) and check_date(date_end) and compare_dates(date_start, date_end):
                                 if is_doctor_available(doctor_user_id, date_start, date_end):
                                     if are_nurses_available(nurses, date_start, date_end, 1):
-                                        query = "SELECT contract_employee_person_id FROM assistants WHERE name = %s"
-                                        values = (username,)  
-                                        cursor.execute(query, values)
-                                        assistant_id = cursor.fetchone()
-
+                                        
                                         if hospitalization_id is None:  # if don't exist a hospitalization
-                                            cursor.execute("SELECT MAX(id) FROM hospitalization;")
+                                            cursor.execute("SELECT COALESCE(MAX(id), 0) FROM hospitalization;")
                                             hosp_id = cursor.fetchone()[0]
                                             if hosp_id is None:
                                                 hosp_id = 0
@@ -736,13 +729,13 @@ def schedule_surgery(hospitalization_id=None):
                                                 VALUES (%s, %s, %s, (SELECT COALESCE(MAX(n_bed), 0) + 1 FROM hospitalization), %s, %s, %s)
                                                 RETURNING id
                                             """
-                                            values = (hosp_id, date_start, date_end, assistant_id, pacient_id, nurses[0][0])
+                                            values = (hosp_id, date_start, date_end, person_type[0], pacient_id, nurses[0][0])
                                             cursor.execute(query, values)
                                             hospitalization_id = cursor.fetchone()[0]
                                             
                                             query = """
-                                                INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hosp_id)
-                                                VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM surgeries), %s, %s, (SELECT COALESCE(MAX(n_room), 0) + 1 FROM surgeries), %s, %s, %s)
+                                                INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hospitalization_id)
+                                                VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM surgeries), %s, %s, (SELECT COALESCE(MAX(n_room),0) + 1 FROM surgeries), %s, %s, %s)
                                                 RETURNING id
                                             """
                                             values = (date_start, date_end, type_surgery, doctor_user_id, hospitalization_id)
@@ -764,20 +757,21 @@ def schedule_surgery(hospitalization_id=None):
                                             }
                                                 
                                         else:  # if exist a hospitalization
-                                            cursor.execute("SELECT MAX(id) FROM surgeries;")
+                                            
+                                            cursor.execute("SELECT COALESCE(MAX(id), 0) FROM surgeries;")
                                             surgery_id = cursor.fetchone()[0]
                                             if surgery_id is None:
                                                 surgery_id = 0
                                             surgery_id += 1
 
-                                            cursor.execute("SELECT MAX(n_room) FROM surgeries;")
+                                            cursor.execute("SELECT COALESCE(MAX(n_room), 0) FROM surgeries;")
                                             n_room = cursor.fetchone()[0]
                                             if n_room is None:
                                                 n_room = 0
                                             n_room += 1
 
                                             query = """
-                                                INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hosp_id)
+                                                INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hospitalization_id)
                                                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                                                 RETURNING id
                                             """
@@ -819,7 +813,7 @@ def schedule_surgery(hospitalization_id=None):
                                 message["error"] = "Wrong parameter in JSON file for appointment!"
 
                 except (Exception, psycopg2.DatabaseError) as error:
-                    logger.error(f'POST /dbproj/surgery - error: {error}')
+                    logger.error(f'POST /surgery - error: {error}')
                     message = {
                         "status": StatusCodes['internal_error'],
                         "errors": str(error)
@@ -840,6 +834,59 @@ def schedule_surgery(hospitalization_id=None):
             
     return flask.jsonify(message)
 
+
+@app.route("/bills/<bill_id>", methods=["POST"])
+def s():
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+    
+    message = {}
+
+    if "token" in payload:
+        decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+        username = decoded_token["username"]
+        person_type = get_person_type(username)
+        
+        if person_type[1] == "pacient":  # verify if the user is an assistant
+            if "amount" in payload and "payment_method" in payload:
+                doctor_user_id = payload["doctor_id"]
+                date_start = payload["date_start"]
+                date_end = payload["date_end"]
+                type_surgery = payload["type_surgery"]
+                nurses = payload["nurse"]
+                
+                try:
+                    with db_connection() as conn:
+                        with conn.cursor() as cursor:
+                            pass
+
+                
+                except (Exception, psycopg2.DatabaseError) as error:
+                    logger.error(f'POST /surgery - error: {error}')
+                    message = {
+                        "status": StatusCodes['internal_error'],
+                        "errors": str(error)
+                    }
+
+                finally:
+                    if conn is not None:
+                        conn.close()
+            else:
+                message["status"] = StatusCodes['api_error']
+                message["error"] = "Missing parameters"
+        else:
+            message["status"] = StatusCodes['api_error']
+            message["error"] = "You don't have permission to do this action!"
+    else:
+        message["status"] = StatusCodes['api_error']
+        message["error"] = "Token not found!"	
+            
+    return flask.jsonify(message)
 
 
 if __name__ == '__main__':

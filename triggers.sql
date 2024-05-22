@@ -16,7 +16,7 @@ ORDER BY id;
 CREATE OR REPLACE FUNCTION create_billing_on_appointment() RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO billing (id, total, data_billing)
-    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 50, NOW());
+    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 50, CURRENT_DATE);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -37,8 +37,8 @@ CREATE OR REPLACE FUNCTION create_billing_on_hospitalization() RETURNS TRIGGER A
 DECLARE
     new_billing_id INTEGER;
 BEGIN
-    INSERT INTO billing (id, total, data_billing)
-    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 100, NOW())
+    INSERT INTO billing (id, total, data_billing) -- cirurgia + hospitalização = 150
+    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 150, CURRENT_DATE)
     RETURNING id INTO new_billing_id;
     
     NEW.billing_id := new_billing_id;
@@ -46,6 +46,8 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS create_billing_on_hospitalization ON hospitalization;
 
 CREATE TRIGGER create_billing_on_hospitalization
 BEFORE INSERT ON hospitalization
