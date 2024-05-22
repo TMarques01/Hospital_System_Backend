@@ -671,7 +671,7 @@ def schedule_surgery(hospitalization_id=None):
                                             
                                         hosp_id += 1
                                     
-										cursor.execute("SELECT MAX(n_bed) FROM hospitalization;") #buscar um quarto para a cirurgia
+										cursor.execute("SELECT MAX(n_bed) FROM hospitalization;") #buscar um quarto para a hospitalização
                                         n_bed = cursor.fetchone()[0]
                                         if n_room is None:
                                                 n_room = 0
@@ -693,14 +693,16 @@ def schedule_surgery(hospitalization_id=None):
 
 										cursor.execute(query, values)
 
+										# Create new hospitalization
 										query = """
 											INSERT INTO hospitalization (id, date_start, date_end, n_bed, assistants_contract_employee_person_id, billing_id, pacient_person_id, nurse_contract_employee_person_id)
 											VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
 											RETURNING hospitalization_id	
 										"""
 										values = (hosp_id, date_start, date_end, n_bed, assistant_id, billing_id, pacient_id, nurse_id)
+                                    
+										cursor.execute(query, values)# Create new hospitalization
 
-                                        # Create new hospitalization
                                         cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
                                         surgery_id = cursor.fetchone()[0]
                                         if surgery_id is None:
@@ -724,7 +726,7 @@ def schedule_surgery(hospitalization_id=None):
                                         values = (surgery_id, date_start, date_end, n_room, type_surgery, nurse_id, doctor_user_id, hosp_id)
                                         
 
-                                        cursor.execute(query, values)#new hospitalization done
+                                        cursor.execute(query, values)#new surgery done
                                         conn.commit()
 
                                         result = {
@@ -740,8 +742,43 @@ def schedule_surgery(hospitalization_id=None):
                                             "results": result
                                         }
                                     else:
-                                        #FAZER AQUI CASO JA EXISTE UMA HOSPITALIZAÇÃO
-                                        pass  
+                                    	cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
+                                        surgery_id = cursor.fetchone()[0]
+                                        if surgery_id is None:
+                                                surgery_id = 0
+                                            
+                                        surgery_id += 1
+                                
+                                    
+                                        cursor.execute("SELECT MAX(n_room) FROM surgeries;") #buscar um quarto para a cirurgia
+                                        n_room = cursor.fetchone()[0]
+                                        if n_room is None:
+                                                n_room = 0
+                                        n_room += 1
+                                    
+										query = """
+                                            INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hosp_id))
+                                            VALUES (%s, %s)
+                                            RETURNING hospitalization_id
+                                        """
+                                        values = (surgery_id, date_start, date_end, n_room, type_surgery, nurse_id, doctor_user_id, hospitalization_id)
+                                        
+
+                                        cursor.execute(query, values)#new hospitalization done
+                                        conn.commit()
+
+                                        result = {
+                                            "hospitalization_id": hosp_id,
+                                            "surgery_id": surgery_id,
+                                            "patient_id": pacient_id,
+                                            "doctor_id": doctor_user_id,
+                                            "date_start": date_start,
+                                            "date_end": date_end,
+                                        }
+                                        message = {
+                                            "status": StatusCodes['success'],
+                                            "results": result
+                                        }
                                 else:
                                     message["status"] = StatusCodes['api_error']
                                     message["error"] = "Doctor is not available"
