@@ -139,7 +139,7 @@ def get_person_type(username):
 # check if the doctor is available in the date (Return true if is available and false if is not available)
 def is_doctor_available(doctor_id, date_start, date_end):
     query = """ 
-    SELECT 1 FROM surgeries_nurse_role
+    SELECT 1 FROM surgeries
     WHERE doctor_contract_employee_person_id = %s
     AND (date_start, date_end) OVERLAPS (%s, %s)
     UNION ALL
@@ -500,6 +500,17 @@ def create_appointment():
                                         
                                         cursor.execute(query, values)
 
+                                        if "nurse" in payload:
+                                            nurse_ids = payload["nurse"]
+                                            for nurse_id in nurse_ids:
+                                                query_nurse = """
+                                                    INSERT INTO nurse_appointment (appointment_id, nurse_contract_employee_person_id)
+                                                    VALUES (%s, %s)
+                                                """
+                                                values_nurse = (appointment_id, nurse_id)
+                                                cursor.execute(query_nurse, values_nurse)
+
+
                                         conn.commit()
                     
                                         message['status'] = StatusCodes['success']
@@ -556,7 +567,7 @@ def see_appointment(patient_user_id):
         })
  
     message = {}
-    
+
     try:
         conn = db_connection()
         cur = conn.cursor()
@@ -606,6 +617,135 @@ def see_appointment(patient_user_id):
 
     return flask.jsonify(message)
 
+
+@app.route("/dbproj/surgery", methods=["POST"])
+@app.route("/dbproj/surgery/<int:hospitalization_id>", methods=["POST"])
+def schedule_surgery(hospitalization_id=None):
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+    
+    message = {}
+
+    if "token" in payload:
+        
+        decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+        username = decoded_token["username"]
+        person_type = get_person_type(username)
+        
+        if person_type[1] == "assistant": # verify if the user is an assistant
+            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "data_end" in payload and "type_surgery" in payload and "n_room" in payload:
+                
+                pacient_id = payload["pacient_id"]
+                doctor_user_id = payload["doctor_id"]
+                date_start = payload["date_start"]
+                date_end = payload["date_end"]
+                type_surgery = payload["type_surgery"]
+                n_room = payload["n_room"]
+
+                try:
+                    with db_connection() as conn:
+                        with conn.cursor() as cursor:
+                            if check_date(date_start) and check_date(date_end) and compare_dates(date_start, date_end):
+                                if is_doctor_available(doctor_user_id, date_start, date_end):
+                                    # ainda não mudei nada aqui
+                                    # get assistant id
+                                    query = "SELECT id FROM assistant WHERE name = %s"
+                                    values = (username,)  
+
+                                    cursor.execute(query, values)
+                                    assistant_id = cursor.fetchone()
+
+                                    if hospitalization_id is None:
+                                        
+                                        # Create new hospitalization
+                                        cursor.execute("SELECT MAX(id) FROM surgeries_nurse_role_id;")#buscar um id para a surgery
+                                        surgery_id = cursor.fetchone()[0]
+                                        if surgery_id is None:
+                                                surgery_id = 0
+                                            
+                                        surgery_id += 1
+                                
+                                        cursor.execute("SELECT MAX(id) FROM hospitalization;") #buscar um id para a hospitalization
+                                        hosp_id = cursor.fetchone()[0]
+                                        if hosp_id is None:
+                                                hosp_id = 0
+                                            
+                                        hosp_id += 1
+                                    
+                                        cursor.execute("SELECT MAX(n_room) FROM surgeries;") #buscar um id para a surgery
+                                        n_room = cursor.fetchone()[0]
+                                        if n_room is None:
+                                                n_room = 0
+                                        n_room += 1
+                                        
+
+                                        query = """
+                                            INSERT INTO surgeries (id, date_start, date_end, n_room, type, nurse_contract_employee_person_id, , doctor_contract_employee_person_id))
+                                            VALUES (%s, %s)
+                                            RETURNING hospitalization_id
+                                        """
+                                        values = (surgery_id, date_start, date_end, n_room, type_surgery, nurse_id, doctor_user_id, hosp_id)
+                                        
+
+                                        cursor.execute(query, values)#new hospitalization done
+                                        conn.commit()
+
+                                        # Associate nurses with the surgery    NAO SEI SE ESTA PARTE SE FAZ ASSIM
+                                        for nurse_id, role in nurses:
+                                            cursor.execute("""
+                                                INSERT INTO surgeries_nurses (surgery_id, nurse_id, role)
+                                                VALUES (%s, %s, %s)
+                                            """, (hosp_id, nurse_id, role))
+                                        
+                                        conn.commit()
+                                        result = {
+                                            "hospitalization_id": hosp_id,
+                                            "surgery_id": surgery_id,
+                                            "patient_id": pacient_id,
+                                            "doctor_id": doctor_user_id,
+                                            "date_start": date_start,
+                                            "date_end": date_end,
+                                        }
+                                        message = {
+                                            "status": StatusCodes['success'],
+                                            "results": result
+                                        }
+                                    else:
+                                        #FAZER AQUI CASO JA EXISTE UMA HOSPITALIZAÇÃO
+                                        pass  
+                                else:
+                                    message["status"] = StatusCodes['api_error']
+                                    message["error"] = "Doctor is not available"
+                            else:
+                                message["status"] = StatusCodes['api_error']
+                                message["error"] = "Wrong parameter in JSON file for appointment!"
+
+                except (Exception, psycopg2.DatabaseError) as error:
+                    logger.error(f'POST /dbproj/surgery - error: {error}')
+                    message = {
+                        "status": StatusCodes['internal_error'],
+                        "errors": str(error)
+                    }
+
+                finally:
+                    if conn is not None:
+                        conn.close()
+            else:
+                message["status"] = StatusCodes['api_error']
+                message["error"] = "Missing parameters"
+        else:
+            message["status"] = StatusCodes['api_error']
+            message["error"] = "You don't have permission to do this action!"
+    else:
+        message["status"] = StatusCodes['api_error']
+        message["error"] = "Token not found!"	
+            
+    return flask.jsonify(message)
 
 
 if __name__ == '__main__':
