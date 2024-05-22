@@ -165,7 +165,7 @@ def are_nurses_available(nurse_ids, date_start, date_end):
     for nurse_id in nurse_ids:
         query = """ 
         SELECT 1 FROM nurse_role nr
-        JOIN surgeries s ON nr.surgerie_id = s.id
+        JOIN surgeries s ON nr.surgeries_id = s.id
         WHERE nr.nurse_contract_employee_person_id = %s
         AND (s.date_start, s.date_end) OVERLAPS (%s, %s)
         UNION ALL
@@ -509,7 +509,7 @@ def create_appointment():
                                     if is_room_avaliable(cursor, n_room, date_start, date_end):
 
                                         logger.debug(f'POST /appointment - payload: {payload}')
-
+                                                                                
                                         # Get the current maximum appointment ID
                                         cursor.execute("SELECT MAX(id) FROM appointment;")
                                         appointment_id = cursor.fetchone()[0]
@@ -517,7 +517,7 @@ def create_appointment():
                                             appointment_id = 0
                                         
                                         appointment_id += 1
-                                        
+                                                                            
                                         # Now you can use appointment_id and billing_id in your INSERT statement
                                         query = """
                                             INSERT INTO appointment 
@@ -527,16 +527,25 @@ def create_appointment():
                                         values = (appointment_id, date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,)
                                         
                                         cursor.execute(query, values)
-
+                                        
                                         if "nurse" in payload:
-                                            nurse_ids = payload["nurse"]
-                                            for nurse_id in nurse_ids:
-                                                query_nurse = """
-                                                    INSERT INTO nurse_appointment (appointment_id, nurse_contract_employee_person_id)
-                                                    VALUES (%s, %s)
-                                                """
-                                                values_nurse = (appointment_id, nurse_id)
-                                                cursor.execute(query_nurse, values_nurse)
+                                            if are_nurses_available(payload["nurse"], date_start, date_end):
+                                                nurse_ids = payload["nurse"]
+                                                for nurse_id in nurse_ids:
+                                                    query_nurse = """
+                                                        INSERT INTO nurse_appointment (appointment_id, nurse_contract_employee_person_id)
+                                                        VALUES (%s, %s)
+                                                    """
+                                                    values_nurse = (appointment_id, nurse_id)
+                                                    cursor.execute(query_nurse, values_nurse)
+                                                    
+                                            else:
+                                                conn.rollback()
+                                                return flask.jsonify({
+                                                    "status": StatusCodes['api_error'],
+                                                    "error": "Nurse is not available"
+                                                })
+
 
                                         conn.commit()
                     
@@ -556,6 +565,7 @@ def create_appointment():
 								# The room is not available, return an error message
                                 message['status'] = StatusCodes['api_error']
                                 message['message'] = "Data or Room not valid"
+
 
                 except (Exception, psycopg2.DatabaseError) as error:
                     logger.error(f'POST /appointment - error: {error}')
@@ -689,7 +699,7 @@ def schedule_surgery(hospitalization_id=None):
                                         cursor.execute(query, values)
                                         assistant_id = cursor.fetchone()
 
-                                        if hospitalization_id is None:
+                                        if hospitalization_id is None: # if exist a hospitalization
                                             
                                             # get assistant id
                                             query = "SELECT id FROM assistant WHERE name = %s"
@@ -707,6 +717,15 @@ def schedule_surgery(hospitalization_id=None):
 
                                             cursor.execute(query, values)
                                             surgery_id, hospitalization_id = cursor.fetchone()
+                                            
+                                            for nurse in nurses:
+                                                query_nurse = """
+                                                    INSERT INTO nurse_role (role, surgeries_id, nurse_contract_employee_person_id)
+                                                    VALUES (%s, %s)
+                                                """
+                                                values_nurse = (nurse[1], surgery_id, nurse)
+                                                cursor.execute(query_nurse, values_nurse)
+                                            
                                             conn.commit()
 
                                             result = {
@@ -722,7 +741,7 @@ def schedule_surgery(hospitalization_id=None):
                                                 "results": result
                                             }
                                             
-                                        else:
+                                        else: # if don't exist a hospitalization
                                             
                                             cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
                                             surgery_id = cursor.fetchone()[0]
@@ -748,6 +767,15 @@ def schedule_surgery(hospitalization_id=None):
 
                                             cursor.execute(query, values)#new hospitalization done
                                             surgery_id, hospitalization_id = cursor.fetchone()
+                                            
+                                                                                        
+                                            for nurse in nurses:
+                                                query_nurse = """
+                                                    INSERT INTO nurse_role (role, surgeries_id, nurse_contract_employee_person_id)
+                                                    VALUES (%s, %s)
+                                                """
+                                                values_nurse = (nurse[1], surgery_id, nurse)
+                                                cursor.execute(query_nurse, values_nurse)
                                             
                                             conn.commit()
 
