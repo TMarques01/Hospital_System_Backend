@@ -161,31 +161,60 @@ def is_doctor_available(doctor_id, date_start, date_end):
 
 
 # check if the nurses aare available in the date (Return true if is available and false if is not available)
-def are_nurses_available(nurse_ids, date_start, date_end):
-    for nurse_id in nurse_ids:
-        query = """ 
-        SELECT 1 FROM nurse_role nr
-        JOIN surgeries s ON nr.surgeries_id = s.id
-        WHERE nr.nurse_contract_employee_person_id = %s
-        AND (s.date_start, s.date_end) OVERLAPS (%s, %s)
-        UNION ALL
-        SELECT 1 FROM nurse_appointment na
-        JOIN appointment a ON na.appointment_id = a.id
-        WHERE na.nurse_contract_employee_person_id = %s
-        AND (a.date_start, a.date_end) OVERLAPS (%s, %s)
-        LIMIT 1;
-        """
-        try:
-            with db_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(query, (nurse_id, date_start, date_end, nurse_id, date_start, date_end))
-                    row = cursor.fetchone()
-                    if row is not None:
-                        return False
-        except (Exception, psycopg2.DatabaseError) as error:
-            print(str(error))
-            return False
-    return True
+def are_nurses_available(nurse_ids, date_start, date_end, type):
+    if type == 1:
+        for nurse_id in nurse_ids:
+            query = """ 
+            SELECT 1 FROM nurse_role nr
+            JOIN surgeries s ON nr.surgeries_id = s.id
+            WHERE nr.nurse_contract_employee_person_id = %s
+            AND (s.date_start, s.date_end) OVERLAPS (%s, %s)
+            UNION ALL
+            SELECT 1 FROM nurse_appointment na
+            JOIN appointment a ON na.appointment_id = a.id
+            WHERE na.nurse_contract_employee_person_id = %s
+            AND (a.date_start, a.date_end) OVERLAPS (%s, %s)
+            LIMIT 1;
+            """
+            try:
+                with db_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(query, (nurse_id[0], date_start, date_end, nurse_id[0], date_start, date_end))
+                        row = cursor.fetchone()
+                        if row is not None:
+                            return False
+            except (Exception, psycopg2.DatabaseError) as error:
+                print(str(error))
+                return False
+        return True
+    else:
+        for nurse_id in nurse_ids:
+            query = """ 
+            SELECT 1 FROM nurse_role nr
+            JOIN surgeries s ON nr.surgeries_id = s.id
+            WHERE nr.nurse_contract_employee_person_id = %s
+            AND (s.date_start, s.date_end) OVERLAPS (%s, %s)
+            UNION ALL
+            SELECT 1 FROM nurse_appointment na
+            JOIN appointment a ON na.appointment_id = a.id
+            WHERE na.nurse_contract_employee_person_id = %s
+            AND (a.date_start, a.date_end) OVERLAPS (%s, %s)
+            LIMIT 1;
+            """
+            try:
+                with db_connection() as conn:
+                    with conn.cursor() as cursor:
+                        cursor.execute(query, (nurse_id, date_start, date_end, nurse_id, date_start, date_end))
+                        row = cursor.fetchone()
+                        if row is not None:
+                            return False
+            except (Exception, psycopg2.DatabaseError) as error:
+                print(str(error))
+                return False
+        return True
+        
+        
+
 
 
 # check if the room is available in the date (Return true if is available and false if is not available)
@@ -529,7 +558,7 @@ def create_appointment():
                                         cursor.execute(query, values)
                                         
                                         if "nurse" in payload:
-                                            if are_nurses_available(payload["nurse"], date_start, date_end):
+                                            if are_nurses_available(payload["nurse"], date_start, date_end, 0):
                                                 nurse_ids = payload["nurse"]
                                                 for nurse_id in nurse_ids:
                                                     query_nurse = """
@@ -676,7 +705,7 @@ def schedule_surgery(hospitalization_id=None):
         person_type = get_person_type(username)
         
         if person_type[1] == "assistant": # verify if the user is an assistant
-            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "data_end" in payload and "type_surgery" in payload and "n_room" in payload and "nurse" in payload:
+            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "date_end" in payload and "type_surgery" in payload and "n_room" in payload and "nurse" in payload:
                 
                 pacient_id = payload["pacient_id"]
                 doctor_user_id = payload["doctor_id"]
@@ -691,22 +720,22 @@ def schedule_surgery(hospitalization_id=None):
                         with conn.cursor() as cursor:
                             if check_date(date_start) and check_date(date_end) and compare_dates(date_start, date_end):
                                 if is_doctor_available(doctor_user_id, date_start, date_end):
-                                    if are_nurses_available(nurses, date_start, date_end):
+                                    if are_nurses_available(nurses, date_start, date_end, 1):
                                         
-                                        query = "SELECT id FROM assistant WHERE name = %s"
+                                        query = "SELECT contract_employee_person_id FROM assistants WHERE name = %s"
                                         values = (username,)  
 
                                         cursor.execute(query, values)
                                         assistant_id = cursor.fetchone()
 
-                                        if hospitalization_id is None: # if exist a hospitalization
-                                            
-                                            # get assistant id
-                                            query = "SELECT id FROM assistant WHERE name = %s"
-                                            values = (username,)  
+                                        if hospitalization_id is None: # if don't exist a hospitalization
+                                        
+                                            cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
+                                            surgery_id = cursor.fetchone()[0]
+                                            if surgery_id is None:
+                                                    surgery_id = 0
 
-                                            cursor.execute(query, values)
-                                            assistant_id = cursor.fetchone()
+                                            surgery_id += 1
 
                                             query = """
                                                 INSERT INTO surgeries (date_start, date_end, type, doctor_contract_employee_person_id, assistants_contract_employee_person_id, pacient_person_id, nurse_contract_employee_person_id)
@@ -741,7 +770,7 @@ def schedule_surgery(hospitalization_id=None):
                                                 "results": result
                                             }
                                             
-                                        else: # if don't exist a hospitalization
+                                        else: # if exist a hospitalization
                                             
                                             cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
                                             surgery_id = cursor.fetchone()[0]
