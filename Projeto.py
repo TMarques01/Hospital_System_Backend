@@ -149,6 +149,7 @@ def is_doctor_available(doctor_id, date_start, date_end):
     LIMIT 1;
     """
     try:
+        
         with db_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(query, (doctor_id, date_start, date_end, doctor_id, date_start, date_end))
@@ -157,6 +158,34 @@ def is_doctor_available(doctor_id, date_start, date_end):
     except (Exception, psycopg2.DatabaseError) as error:
         print(str(error))
         return False
+
+
+# check if the nurses aare available in the date (Return true if is available and false if is not available)
+def are_nurses_available(nurse_ids, date_start, date_end):
+    for nurse_id in nurse_ids:
+        query = """ 
+        SELECT 1 FROM nurse_role nr
+        JOIN surgeries s ON nr.surgerie_id = s.id
+        WHERE nr.nurse_contract_employee_person_id = %s
+        AND (s.date_start, s.date_end) OVERLAPS (%s, %s)
+        UNION ALL
+        SELECT 1 FROM nurse_appointment na
+        JOIN appointment a ON na.appointment_id = a.id
+        WHERE na.nurse_contract_employee_person_id = %s
+        AND (a.date_start, a.date_end) OVERLAPS (%s, %s)
+        LIMIT 1;
+        """
+        try:
+            with db_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(query, (nurse_id, date_start, date_end, nurse_id, date_start, date_end))
+                    row = cursor.fetchone()
+                    if row is not None:
+                        return False
+        except (Exception, psycopg2.DatabaseError) as error:
+            print(str(error))
+            return False
+    return True
 
 
 # check if the room is available in the date (Return true if is available and false if is not available)
@@ -471,7 +500,7 @@ def create_appointment():
                 doctor_contract_employee_person_id = payload["doctor"]
                 pacient_person_id = payload["pacient"]
                 assistant_person_id = person_type[0]
-
+                
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
@@ -488,15 +517,14 @@ def create_appointment():
                                             appointment_id = 0
                                         
                                         appointment_id += 1
-                                        billing_id = 0 # using the default billing_id
                                         
                                         # Now you can use appointment_id and billing_id in your INSERT statement
                                         query = """
                                             INSERT INTO appointment 
                                             (id, date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id, billing_id) 
-                                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                            VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT MAX(id) FROM billing));
                                         """
-                                        values = (appointment_id, date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id, billing_id)
+                                        values = (appointment_id, date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,)
                                         
                                         cursor.execute(query, values)
 
@@ -510,12 +538,12 @@ def create_appointment():
                                                 values_nurse = (appointment_id, nurse_id)
                                                 cursor.execute(query_nurse, values_nurse)
 
-
                                         conn.commit()
                     
                                         message['status'] = StatusCodes['success']
                                         message['message'] = "Appointment created"
                                         message['appointment_id'] = appointment_id
+                                        
                                     else:
                                         # The room is not available, return an error message
                                         message['status'] = StatusCodes['api_error']
@@ -618,8 +646,8 @@ def see_appointment(patient_user_id):
     return flask.jsonify(message)
 
 
-@app.route("/dbproj/surgery", methods=["POST"])
-@app.route("/dbproj/surgery/<int:hospitalization_id>", methods=["POST"])
+@app.route("/surgery", methods=["POST"])
+@app.route("/surgery/<int:hospitalization_id>", methods=["POST"])
 def schedule_surgery(hospitalization_id=None):
     try:
         payload = flask.request.get_json()
@@ -638,7 +666,7 @@ def schedule_surgery(hospitalization_id=None):
         person_type = get_person_type(username)
         
         if person_type[1] == "assistant": # verify if the user is an assistant
-            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "data_end" in payload and "type_surgery" in payload and "n_room" in payload and "nurse_id" in payload:
+            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "data_end" in payload and "type_surgery" in payload and "n_room" in payload and "nurse" in payload:
                 
                 pacient_id = payload["pacient_id"]
                 doctor_user_id = payload["doctor_id"]
@@ -646,56 +674,100 @@ def schedule_surgery(hospitalization_id=None):
                 date_end = payload["date_end"]
                 type_surgery = payload["type_surgery"]
                 n_room = payload["n_room"]
-                nurse_id = payload["nurse_id"]
-
+                nurses = payload["nurse"]
+                
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
                             if check_date(date_start) and check_date(date_end) and compare_dates(date_start, date_end):
                                 if is_doctor_available(doctor_user_id, date_start, date_end):
-                                    # ainda não mudei nada aqui
-                                    # get assistant id
-                                    query = "SELECT id FROM assistant WHERE name = %s"
-                                    values = (username,)  
+                                    if are_nurses_available(nurses, date_start, date_end):
+                                        
+                                        query = "SELECT id FROM assistant WHERE name = %s"
+                                        values = (username,)  
 
-                                    cursor.execute(query, values)
-                                    assistant_id = cursor.fetchone()
+                                        cursor.execute(query, values)
+                                        assistant_id = cursor.fetchone()
 
-                                    if hospitalization_id is None:
-	
-						# get assistant id
-						query = "SELECT id FROM assistant WHERE name = %s"
-						values = (username,)  
-	
-						cursor.execute(query, values)
-						assistant_id = cursor.fetchone()
-	
-						query = """
-							INSERT INTO surgeries (date_start, date_end, type, doctor_contract_employee_person_id, assistants_contract_employee_person_id, pacient_person_id, nurse_contract_employee_person_id)
-							VALUES (%s, %s, %s, %s, %s, %s, %s)
-							RETURNING id, hospitalization_id
-						"""
-						values = (date_start, date_end, type_surgery, doctor_user_id, assistant_id, pacient_id, nurse_id)
-	
-						cursor.execute(query, values)
-						surgery_id, hospitalization_id = cursor.fetchone()
-						conn.commit()
-	
-						result = {
-							"hospitalization_id": hospitalization_id,
-							"surgery_id": surgery_id,
-							"patient_id": pacient_id,
-							"doctor_id": doctor_user_id,
-							"date_start": date_start,
-							"date_end": date_end,
-						}
-						message = {
-							"status": StatusCodes['success'],
-							"results": result
-						}
-				else:
-				message["status"] = StatusCodes['api_error']
-				message["error"] = "Doctor is not available"
+                                        if hospitalization_id is None:
+                                            
+                                            # get assistant id
+                                            query = "SELECT id FROM assistant WHERE name = %s"
+                                            values = (username,)  
+
+                                            cursor.execute(query, values)
+                                            assistant_id = cursor.fetchone()
+
+                                            query = """
+                                                INSERT INTO surgeries (date_start, date_end, type, doctor_contract_employee_person_id, assistants_contract_employee_person_id, pacient_person_id, nurse_contract_employee_person_id)
+                                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                                RETURNING id, hospitalization_id
+                                            """
+                                            values = (date_start, date_end, type_surgery, doctor_user_id, assistant_id, pacient_id, nurse_id)
+
+                                            cursor.execute(query, values)
+                                            surgery_id, hospitalization_id = cursor.fetchone()
+                                            conn.commit()
+
+                                            result = {
+                                                "hospitalization_id": hospitalization_id,
+                                                "surgery_id": surgery_id,
+                                                "patient_id": pacient_id,
+                                                "doctor_id": doctor_user_id,
+                                                "date_start": date_start,
+                                                "date_end": date_end,
+                                            }
+                                            message = {
+                                                "status": StatusCodes['success'],
+                                                "results": result
+                                            }
+                                            
+                                        else:
+                                            
+                                            cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
+                                            surgery_id = cursor.fetchone()[0]
+                                            if surgery_id is None:
+                                                    surgery_id = 0
+
+                                            surgery_id += 1
+
+
+                                            cursor.execute("SELECT MAX(n_room) FROM surgeries;") #buscar um quarto para a cirurgia
+                                            n_room = cursor.fetchone()[0]
+                                            if n_room is None:
+                                                    n_room = 0
+                                            n_room += 1
+
+                                            query = """
+                                                INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hosp_id))
+                                                VALUES (%s, %s)
+                                                RETURNING hospitalization_id
+                                            """
+                                            values = (surgery_id, date_start, date_end, n_room, type_surgery, nurse_id, doctor_user_id, hospitalization_id)
+
+
+                                            cursor.execute(query, values)#new hospitalization done
+                                            conn.commit()
+
+                                            result = {
+                                                "hospitalization_id": hosp_id,
+                                                "surgery_id": surgery_id,
+                                                "patient_id": pacient_id,
+                                                "doctor_id": doctor_user_id,
+                                                "date_start": date_start,
+                                                "date_end": date_end,
+                                            }
+                                            message = {
+                                                "status": StatusCodes['success'],
+                                                "results": result
+                                            }
+                                             
+                                    else:
+                                        message["status"] = StatusCodes['api_error']
+                                        message["error"] = "Nurse is not available"
+                                else:
+                                    message["status"] = StatusCodes['api_error']
+                                    message["error"] = "Doctor is not available"
                             else:
                                 message["status"] = StatusCodes['api_error']
                                 message["error"] = "Wrong parameter in JSON file for appointment!"
@@ -745,4 +817,5 @@ if __name__ == '__main__':
     
     
     
+
 
