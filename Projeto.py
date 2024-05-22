@@ -705,14 +705,13 @@ def schedule_surgery(hospitalization_id=None):
         person_type = get_person_type(username)
         
         if person_type[1] == "assistant": # verify if the user is an assistant
-            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "date_end" in payload and "type_surgery" in payload and "n_room" in payload and "nurse" in payload:
+            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "date_end" in payload and "type_surgery" in payload and "nurse" in payload:
                 
                 pacient_id = payload["pacient_id"]
                 doctor_user_id = payload["doctor_id"]
                 date_start = payload["date_start"]
                 date_end = payload["date_end"]
                 type_surgery = payload["type_surgery"]
-                n_room = payload["n_room"]
                 nurses = payload["nurse"]
                 
                 try:
@@ -729,47 +728,51 @@ def schedule_surgery(hospitalization_id=None):
                                         assistant_id = cursor.fetchone()
 
                                         if hospitalization_id is None: # if don't exist a hospitalization
+											
+											cursor.execute("SELECT MAX(id) FROM hospitalization;")#buscar id de hosp
+                                            hosp_id = cursor.fetchone()[0]
+                                            if hosp_id is None:
+                                                    hosp_id = 0
+
+                                            hosp_id += 1
                                         
-                                            cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
-                                            surgery_id = cursor.fetchone()[0]
-                                            if surgery_id is None:
-                                                    surgery_id = 0
+                                            # Insert a new record into the hospitalization table
+											query = """
+												INSERT INTO hospitalization (id,date_start, date_end, n_bed, assistants_contract_employee_person_id, pacient_person_id, nurse_contract_employee_person_id)
+												VALUES (%s,%s, %s, (SELECT COALESCE(MAX(n_bed), 0) + 1 FROM hospitalization), %s, %s, %s)
+												RETURNING id
+											"""
+											values = (hosp_id,date_start, date_end, assistant_id, pacient_id, nurses[0][0])
 
-                                            surgery_id += 1
-
-                                            query = """
-                                                INSERT INTO surgeries (date_start, date_end, type, doctor_contract_employee_person_id, assistants_contract_employee_person_id, pacient_person_id, nurse_contract_employee_person_id)
-                                                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                                                RETURNING id, hospitalization_id
+											cursor.execute(query, values)
+											hospitalization_id = cursor.fetchone()[0]
+                                        	
+											query = """
+                                                INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hosp_id))
+                                                VALUES ((SELECT COALESCE(MAX(surgery_id), 0) + 1 FROM surgeries), %s, %s, (SELECT COALESCE(MAX(n_room), 0) + 1 FROM surgeries), %s, %s, %s)
+                                                RETURNING hospitalization_id
                                             """
-                                            values = (date_start, date_end, type_surgery, doctor_user_id, assistant_id, pacient_id, nurses[0][0])
+                                            values = (date_start, date_end, type_surgery, doctor_user_id, hospitalization_id)
 
-                                            cursor.execute(query, values)
-                                            surgery_id, hospitalization_id = cursor.fetchone()
-                                            
-                                            for nurse in nurses:
-                                                query_nurse = """
-                                                    INSERT INTO nurse_role (role, surgeries_id, nurse_contract_employee_person_id)
-                                                    VALUES (%s, %s)
-                                                """
-                                                values_nurse = (nurse[1], surgery_id, nurse)
-                                                cursor.execute(query_nurse, values_nurse)
-                                            
-                                            conn.commit()
+											cursor.execute(query, values)
+											surgery_id = cursor.fetchone()[0]
+											conn.commit()
 
-                                            result = {
-                                                "hospitalization_id": hospitalization_id,
-                                                "surgery_id": surgery_id,
-                                                "patient_id": pacient_id,
-                                                "doctor_id": doctor_user_id,
-                                                "date_start": date_start,
-                                                "date_end": date_end,
-                                            }
-                                            message = {
-                                                "status": StatusCodes['success'],
-                                                "results": result
-                                            }
-                                            
+
+
+											result = {
+												"hospitalization_id": hospitalization_id,
+												"surgery_id": surgery_id,
+												"patient_id": pacient_id,
+												"doctor_id": doctor_user_id,
+												"date_start": date_start,
+												"date_end": date_end,
+											}
+											message = {
+												"status": StatusCodes['success'],
+												"results": result
+											}
+												
                                         else: # if exist a hospitalization
                                             
                                             cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
@@ -876,5 +879,4 @@ if __name__ == '__main__':
     
     
     
-
 
