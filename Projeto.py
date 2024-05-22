@@ -11,6 +11,7 @@ from datetime import datetime
 
 
 secret_key = 'VamosTerBoaNota'
+hosp_cost = 200
 
 app = flask.Flask(__name__)
 
@@ -638,7 +639,7 @@ def schedule_surgery(hospitalization_id=None):
         person_type = get_person_type(username)
         
         if person_type[1] == "assistant": # verify if the user is an assistant
-            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "data_end" in payload and "type_surgery" in payload and "n_room" in payload:
+            if "pacient_id" in payload and "doctor_id" in payload and "date_start" in payload and "data_end" in payload and "type_surgery" in payload and "n_room" in payload and "nurse_id" in payload:
                 
                 pacient_id = payload["pacient_id"]
                 doctor_user_id = payload["doctor_id"]
@@ -646,6 +647,7 @@ def schedule_surgery(hospitalization_id=None):
                 date_end = payload["date_end"]
                 type_surgery = payload["type_surgery"]
                 n_room = payload["n_room"]
+                nurse_id = payload["nurse_id"]
 
                 try:
                     with db_connection() as conn:
@@ -662,22 +664,52 @@ def schedule_surgery(hospitalization_id=None):
 
                                     if hospitalization_id is None:
                                         
-                                        # Create new hospitalization
-                                        cursor.execute("SELECT MAX(id) FROM surgeries_nurse_role_id;")#buscar um id para a surgery
-                                        surgery_id = cursor.fetchone()[0]
-                                        if surgery_id is None:
-                                                surgery_id = 0
-                                            
-                                        surgery_id += 1
-                                
-                                        cursor.execute("SELECT MAX(id) FROM hospitalization;") #buscar um id para a hospitalization
+										cursor.execute("SELECT MAX(id) FROM hospitalization;") #buscar um id para a hospitalization
                                         hosp_id = cursor.fetchone()[0]
                                         if hosp_id is None:
                                                 hosp_id = 0
                                             
                                         hosp_id += 1
                                     
-                                        cursor.execute("SELECT MAX(n_room) FROM surgeries;") #buscar um id para a surgery
+										cursor.execute("SELECT MAX(n_bed) FROM hospitalization;") #buscar um quarto para a cirurgia
+                                        n_bed = cursor.fetchone()[0]
+                                        if n_room is None:
+                                                n_room = 0
+                                        n_room += 1
+                                        
+
+										cursor.execute("SELECT MAX(id) FROM billing;") #criar uma billing
+                                        billing_id = cursor.fetchone()[0]
+                                        if billing_id is None:
+                                                billing_id = 0
+                                        billing_id += 1
+
+										# Create new billing
+										query = """
+											INSERT INTO billing (id, total, date_billing)
+											VALUES (%s, %s, %s)
+										"""
+										values = (billing_id, hosp_cost, date_start)
+
+										cursor.execute(query, values)
+
+										query = """
+											INSERT INTO hospitalization (id, date_start, date_end, n_bed, assistants_contract_employee_person_id, billing_id, pacient_person_id, nurse_contract_employee_person_id)
+											VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+											RETURNING hospitalization_id	
+										"""
+										values = (hosp_id, date_start, date_end, n_bed, assistant_id, billing_id, pacient_id, nurse_id)
+
+                                        # Create new hospitalization
+                                        cursor.execute("SELECT MAX(id) FROM surgeries;")#buscar um id para a surgery
+                                        surgery_id = cursor.fetchone()[0]
+                                        if surgery_id is None:
+                                                surgery_id = 0
+                                            
+                                        surgery_id += 1
+                                
+                                    
+                                        cursor.execute("SELECT MAX(n_room) FROM surgeries;") #buscar um quarto para a cirurgia
                                         n_room = cursor.fetchone()[0]
                                         if n_room is None:
                                                 n_room = 0
@@ -685,7 +717,7 @@ def schedule_surgery(hospitalization_id=None):
                                         
 
                                         query = """
-                                            INSERT INTO surgeries (id, date_start, date_end, n_room, type, nurse_contract_employee_person_id, , doctor_contract_employee_person_id))
+                                            INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hosp_id))
                                             VALUES (%s, %s)
                                             RETURNING hospitalization_id
                                         """
@@ -695,14 +727,6 @@ def schedule_surgery(hospitalization_id=None):
                                         cursor.execute(query, values)#new hospitalization done
                                         conn.commit()
 
-                                        # Associate nurses with the surgery    NAO SEI SE ESTA PARTE SE FAZ ASSIM
-                                        for nurse_id, role in nurses:
-                                            cursor.execute("""
-                                                INSERT INTO surgeries_nurses (surgery_id, nurse_id, role)
-                                                VALUES (%s, %s, %s)
-                                            """, (hosp_id, nurse_id, role))
-                                        
-                                        conn.commit()
                                         result = {
                                             "hospitalization_id": hosp_id,
                                             "surgery_id": surgery_id,
@@ -770,5 +794,4 @@ if __name__ == '__main__':
     
     
     
-
 
