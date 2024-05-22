@@ -703,7 +703,7 @@ def schedule_surgery(hospitalization_id=None):
                                                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                                                 RETURNING id, hospitalization_id
                                             """
-                                            values = (date_start, date_end, type_surgery, doctor_user_id, assistant_id, pacient_id, nurse_id)
+                                            values = (date_start, date_end, type_surgery, doctor_user_id, assistant_id, pacient_id, nurses[0][0])
 
                                             cursor.execute(query, values)
                                             surgery_id, hospitalization_id = cursor.fetchone()
@@ -740,17 +740,19 @@ def schedule_surgery(hospitalization_id=None):
 
                                             query = """
                                                 INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hosp_id))
-                                                VALUES (%s, %s)
+                                                VALUES (%s, %s, %s, %s, %s, %s, %s)
                                                 RETURNING hospitalization_id
                                             """
-                                            values = (surgery_id, date_start, date_end, n_room, type_surgery, nurse_id, doctor_user_id, hospitalization_id)
+                                            values = (surgery_id, date_start, date_end, n_room, type_surgery, doctor_user_id, hospitalization_id)
 
 
                                             cursor.execute(query, values)#new hospitalization done
+                                            surgery_id, hospitalization_id = cursor.fetchone()
+                                            
                                             conn.commit()
 
                                             result = {
-                                                "hospitalization_id": hosp_id,
+                                                "hospitalization_id": hospitalization_id,
                                                 "surgery_id": surgery_id,
                                                 "patient_id": pacient_id,
                                                 "doctor_id": doctor_user_id,
