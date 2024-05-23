@@ -1329,17 +1329,15 @@ def get_top3_patients():
                         
                         query_tentar = """
                         WITH patient_payments AS (
-                            SELECT pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
-                            FROM (
-                                SELECT hospitalization.pacient_person_id, billing.current_payment
-                                FROM hospitalization
-                                JOIN billing ON hospitalization.billing_id = billing.id
-                                UNION ALL
-                                SELECT appointment.pacient_person_id, billing.current_payment
-                                FROM appointment
-                                JOIN billing ON appointment.billing_id = billing.id
-                            ) AS unioned
-                            GROUP BY pacient_person_id
+                            SELECT hospitalization.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM hospitalization
+                            JOIN billing ON hospitalization.billing_id = billing.id
+                            GROUP BY hospitalization.pacient_person_id
+                            UNION ALL
+                            SELECT appointment.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM appointment
+                            JOIN billing ON appointment.billing_id = billing.id
+                            GROUP BY appointment.pacient_person_id
                         ),
                         patient_procedures AS (
                             SELECT hospitalization.pacient_person_id AS patient_id, 
@@ -1353,7 +1351,8 @@ def get_top3_patients():
                             FROM appointment
                             GROUP BY appointment.pacient_person_id
                         )
-                        SELECT person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, 
+                        SELECT 
+                        person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, 
                             JSONB_AGG(patient_procedures.procedures) AS procedures
                         FROM patient_payments
                         JOIN patient_procedures ON patient_payments.patient_id = patient_procedures.patient_id
@@ -1361,7 +1360,6 @@ def get_top3_patients():
                         GROUP BY person.nome
                         ORDER BY amount_spent DESC
                         LIMIT 3;
-                        
                         """
                         cursor.execute(query_tentar)
                         top3_patients = cursor.fetchall()
