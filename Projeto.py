@@ -835,8 +835,8 @@ def schedule_surgery(hospitalization_id=None):
     return flask.jsonify(message)
 
 
-@app.route("/bills/<bill_id>", methods=["POST"])
-def s():
+@app.route("/bills/<int:bill_id>", methods=["POST"])
+def bill_payment(bill_id):
     try:
         payload = flask.request.get_json()
     except:
@@ -854,19 +854,98 @@ def s():
         
         if person_type[1] == "pacient":  # verify if the user is an assistant
             if "amount" in payload and "payment_method" in payload:
-                doctor_user_id = payload["doctor_id"]
-                date_start = payload["date_start"]
-                date_end = payload["date_end"]
-                type_surgery = payload["type_surgery"]
-                nurses = payload["nurse"]
-                
+                amount = payload["amount"]
+                method = payload["payment_method"]
                 try:
                     with db_connection() as conn:
-                        with conn.cursor() as cursor:
-                            pass
+						with conn.cursor() as cursor:
+							if is_digit(amount) and is_digit(bill_id):
+                                # Check if the billing is already paid
+								query = """
+									SELECT status
+									FROM billing
+									WHERE id = %s
+								"""
+								values = (bill_id,)
+								cursor.execute(query, values)
+								billing_status = cursor.fetchone()[0]
 
+								if billing_status is False: #se a bill ainda nao foi totalmente paga
+                                    if method in ["cash", "credit_card", "debit_card"]:
+										# Get the total amount of the billing
+										query = """
+											SELECT total
+											FROM billing
+											WHERE id = %s
+										"""
+										values = (bill_id,)
+										cursor.execute(query, values)
+										billing_total = cursor.fetchone()[0]
+
+										if billing_total is None:
+											message["status"] = StatusCodes['api_error']
+											message["error"] = "No billing found with this id"
+										else:
+											# Check the total amount of payments for the given billing_id
+											query = """
+												SELECT COALESCE(SUM(amount), 0)
+												FROM payment
+												WHERE billing_id = %s
+											"""
+											values = (bill_id,)
+											cursor.execute(query, values)
+											payments_total = cursor.fetchone()[0]
+
+											if payments_total + amount > billing_total:
+												message["status"] = StatusCodes['api_error']
+												message["error"] = f"The amount exceeds the total billing. The amount left is: {billing_total - payments_total}."
+											else:
+												# Insert a new payment
+												query = """
+													INSERT INTO payment (amount, date, type, billing_id)
+													VALUES (%s, CURRENT_DATE, %s, %s)
+												"""
+												values = (amount, method, bill_id)
+												cursor.execute(query, values)
+
+												# Check if there are any more unpaid amounts for the given billing_id
+												remaining_amount = billing_total - payments_total - amount
+
+												if remaining_amount == 0:
+													# Update the billing status to paid
+													query = """
+														UPDATE billing
+														SET status = True
+														WHERE id = %s
+													"""
+													values = (bill_id,)
+													cursor.execute(query, values)
+
+												conn.commit()
+
+
+												if remaining_amount > 0:
+													message = {
+														"status": StatusCodes['success'],
+														"results": f"Payment done with success. There is still an unpaid amount of {remaining_amount}."
+													}
+												else:
+													
+													message = {
+														"status": StatusCodes['success'],
+														"results": "Payment done with success. The total billing has been paid."
+													}
+									else:
+										message["status"] = StatusCodes['api_error']
+										message["error"] = "Wrong payment method"
+                				else:
+									message["status"] = StatusCodes['api_error']
+									message["error"] = "The billing is already paid"
+							else:
+								message["status"] = StatusCodes['api_error']
+								message["error"] = "Wrong amount (not an Integer)"  
                 
-                except (Exception, psycopg2.DatabaseError) as error:
+				except (Exception, psycopg2.DatabaseError) as error:
                     logger.error(f'POST /surgery - error: {error}')
                     message = {
                         "status": StatusCodes['internal_error'],
@@ -911,4 +990,3 @@ if __name__ == '__main__':
     
     
     
-
