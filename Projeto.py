@@ -1189,6 +1189,89 @@ def bill_payment(bill_id):
     return flask.jsonify(message)
 
 
+@app.route("/top3patients", methods=["GET"])
+def get_top3_patients():
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+
+    if "token" in payload:
+        decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+        username = decoded_token["username"]
+        person_type = get_person_type(username)
+
+        if person_type[1] == "assistant":  # verify if the user is an assistant
+            try:
+                with db_connection() as conn:
+                    with conn.cursor() as cursor:
+                        # Get the top 3 patients who spent the most
+                        query = """
+                            WITH patient_payments AS (
+                                SELECT hospitalization.pacient_person_id AS patient_id, SUM(billing.total) AS total_amount
+                                FROM hospitalization
+                                JOIN billing ON hospitalization.billing_id = billing.id
+                                GROUP BY hospitalization.pacient_person_id
+                                UNION ALL
+                                SELECT appointment.pacient_person_id AS patient_id, SUM(billing.total) AS total_amount
+                                FROM appointment
+                                JOIN billing ON appointment.billing_id = billing.id
+                                GROUP BY appointment.pacient_person_id
+                            ),
+                            patient_procedures AS (
+                                SELECT hospitalization.pacient_person_id AS patient_id, 
+                                       ARRAY_AGG(json_build_object('id', surgeries.id, 'doctor_id', surgeries.doctor_contract_employee_person_id, 'date', surgeries.date_start)) AS procedures
+                                FROM surgeries
+                                JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
+                                GROUP BY hospitalization.pacient_person_id
+                                UNION ALL
+                                SELECT appointment.pacient_person_id AS patient_id, 
+                                       ARRAY_AGG(json_build_object('id', appointment.id, 'doctor_id', appointment.doctor_contract_employee_person_id, 'date', appointment.date_start)) AS procedures
+                                FROM appointment
+                                GROUP BY appointment.pacient_person_id
+                            )
+                            SELECT person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, MAX(patient_procedures.procedures) AS procedures
+                            FROM patient_payments
+                            JOIN patient_procedures ON patient_payments.patient_id = patient_procedures.patient_id
+                            JOIN person ON patient_payments.patient_id = person.id
+                            GROUP BY person.nome
+                            ORDER BY amount_spent DESC
+                            LIMIT 3;
+                        """
+                        cursor.execute(query)
+                        top3_patients = cursor.fetchall()
+
+                        # Format the results
+                        formatted_results = [{
+                            "patient_name": row[0],
+                            "amount_spent": row[1],
+                            "procedures": row[2]
+                        } for row in top3_patients]
+
+                        return flask.jsonify({
+                            "status": StatusCodes['success'],
+                            "results": formatted_results
+                        })
+
+            except Exception as e:
+                return flask.jsonify({
+                    "status": StatusCodes['api_error'],
+                    "error": str(e)
+                })
+        else:
+            return flask.jsonify({
+                "status": StatusCodes['api_error'],
+                "error": "Only assistants can use this endpoint."
+            })
+    else:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No token provided."
+        })
+
 if __name__ == '__main__':
 
     # set up logging
