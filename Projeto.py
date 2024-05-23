@@ -50,7 +50,7 @@ def check_contacto(numero):
         return False
     
 
-# check if the date is in the correct format
+# check if the date and hour is in the correct format
 def check_date(date, format="%Y-%m-%d %H:%M:%S"):
 
     try:
@@ -58,6 +58,14 @@ def check_date(date, format="%Y-%m-%d %H:%M:%S"):
         return True
     except ValueError:
         return False
+
+# check if the date is in the correct format 
+def check_date2(date, format="%Y-%m-%d"):
+	try:
+		datetime.strptime(date, format)
+		return True
+	except ValueError:
+		return False
 
 
 # compare two dates if d1 is before d2
@@ -535,7 +543,10 @@ def create_appointment():
                                     if is_room_avaliable(cursor, n_room, date_start, date_end):
 
                                         logger.debug(f'POST /appointment - payload: {payload}')
-                                                                                
+                                        
+                                        # Get the current maximum appointment ID
+                                        cursor.execute("LOCK TABLE appointment IN EXCLUSIVE MODE")
+                                        
                                         # Get the current maximum appointment ID
                                         cursor.execute("SELECT MAX(id) FROM appointment;")
                                         appointment_id = cursor.fetchone()[0]
@@ -548,7 +559,7 @@ def create_appointment():
                                         query = """
                                             INSERT INTO appointment 
                                             (id, date_start, date_end, n_room, assistants_contract_employee_person_id, doctor_contract_employee_person_id, pacient_person_id, billing_id) 
-                                            VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT MAX(id) FROM billing));
+                                            VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT COALESCE(MAX(id),0) + 1 FROM billing));
                                         """
                                         values = (appointment_id, date_start, date_end, n_room, assistant_person_id, doctor_contract_employee_person_id, pacient_person_id,)
                                         
@@ -685,6 +696,8 @@ def see_appointment(patient_user_id):
 @app.route("/surgery", methods=["POST"])
 @app.route("/surgery/<int:hospitalization_id>", methods=["POST"])
 def schedule_surgery(hospitalization_id=None):
+    
+    logger.info(f'POST /surgery/{hospitalization_id}')
     try:
         payload = flask.request.get_json()
     except:
@@ -770,15 +783,24 @@ def schedule_surgery(hospitalization_id=None):
                                                 n_room = 0
                                             n_room += 1
 
+                                            # insert a new record into the surgeries table
                                             query = """
                                                 INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hospitalization_id)
                                                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                                                 RETURNING id
                                             """
+                                        
                                             values = (surgery_id, date_start, date_end, n_room, type_surgery, doctor_user_id, hospitalization_id)
                                             cursor.execute(query, values)
                                             surgery_id = cursor.fetchone()[0]
+                                            
+                                            # updating the billing (100€ for each surgery)
+                                            query_update_billing = "UPDATE billing SET current_payment = current_payment + 100 WHERE id = (SELECT billing_id FROM hospitalization WHERE id = %s)"
+                                            values_update_billing = (hospitalization_id,)
+                                            
+                                            cursor.execute(query_update_billing, values_update_billing)
 
+                                            # add the nurses to the surgery
                                             for nurse in nurses:
                                                 query_nurse = """
                                                     INSERT INTO nurse_role (role, surgeries_id, nurse_contract_employee_person_id)
@@ -837,6 +859,7 @@ def schedule_surgery(hospitalization_id=None):
 
 @app.route('/prescriptions/<int:patient_user_id>', methods=['GET'])
 def get_prescriptions(patient_user_id):
+    
     logger.info('GET /prescriptions/<patient_user_id>')
     logger.debug(f'patient_user_id: {patient_user_id}')
     
@@ -940,7 +963,6 @@ def get_prescriptions(patient_user_id):
     return flask.jsonify(message)
 
 
-
 @app.route('/prescription', methods=['POST'])
 def add_prescription():
     try:
@@ -961,7 +983,7 @@ def add_prescription():
                 "status": StatusCodes['api_error'],
                 "error": "Invalid token"
             })
-        
+
         username = decoded_token["username"]
         person = get_person_type(username)
 
@@ -970,55 +992,81 @@ def add_prescription():
                 type = payload["type"]
                 event_id = payload["event_id"]
                 validity = payload["validity"]
-                
+
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
                             if type in ["appointment", "hospitalization"]:
-                                logger.debug(f'POST /prescription - payload: {payload}')
-                                
-                                cursor.execute("SELECT MAX(id) FROM prescriptions;")
-                                prescription_id = cursor.fetchone()[0]
-                                if prescription_id is None:
-                                    prescription_id = 0
-                                prescription_id += 1
+                                if is_digit(event_id):
+                                    if check_date2(validity):
+                                        if type == "appointment":
+                                            query_date = "SELECT date_start FROM appointment WHERE id = %s"
 
-                                prescription_query = """INSERT INTO prescriptions (id, validity) VALUES (%s, %s)"""
-                                cursor.execute(prescription_query, (prescription_id, validity))
+                                        elif type == "hospitalization":
+                                            query_date = "SELECT date_start FROM hospitalization WHERE id = %s"
 
-                                if type == "appointment":
-                                    query = """INSERT INTO appointment_prescriptions (appointment_id, prescriptions_id) VALUES (%s, %s)"""
-                                    cursor.execute(query, (event_id,prescription_id))
-                                    
-                                elif type == "hospitalization":
-                                    query = """INSERT INTO hospitalization_prescriptions (hospitalization_id, prescriptions_id) VALUES (%s, %s)"""
-                                    cursor.execute(query, (event_id, prescription_id))
-                                    
-                                if "medicines" in payload:
-                                    medicines = payload["medicines"]
-                                    for medicine in medicines:
-                                        if "medicine" in medicine and "dose" in medicine and "frequency" in medicine:
-                                            medicine_name = medicine["medicine"]
-                                            dose = medicine["dose"]
-                                            frequency = medicine["frequency"]
-                                            posology_query = """
-                                            INSERT INTO posology (dose, frequency, medicine_id, prescriptions_id)
-                                            VALUES (%s, %s, (SELECT id FROM medicine WHERE nome = %s), %s)"""
-                                            posology_values = (dose, frequency, medicine_name, prescription_id)
-                                            cursor.execute(posology_query, posology_values)
+                                        cursor.execute(query_date, (event_id,))
+                                        event_date = cursor.fetchone()[0]
+                                        event_date=event_date.date()
+                                        validity=datetime.strptime(validity, '%Y-%m-%d').date()
+
+                                        if validity > event_date:
+                                            logger.debug('POST /prescription - payload: {}'.format(payload))
+                                            cursor.execute("SELECT MAX(id) FROM prescriptions;")
+
+                                            prescription_id = cursor.fetchone()[0]
+                                            if prescription_id is None:
+                                                prescription_id = 0
+                                            prescription_id += 1
+
+                                            prescription_query = """INSERT INTO prescriptions (id, validity) VALUES (%s, %s)"""
+                                            cursor.execute(prescription_query, (prescription_id, validity))
+
+                                            if type == "appointment":
+                                                query = """INSERT INTO appointment_prescriptions (appointment_id, prescriptions_id) VALUES (%s, %s)"""
+
+                                            elif type == "hospitalization":
+                                                query = """INSERT INTO hospitalization_prescriptions (hospitalization_id, prescriptions_id) VALUES (%s, %s)"""
+
+                                            cursor.execute(query, (event_id, prescription_id))
+
+                                            if "medicines" in payload:
+                                                medicines = payload["medicines"]
+                                                for medicine in medicines:
+                                                    if "medicine" in medicine and "posology_dose" in medicine and "posology_frequency" in medicine:
+                                                        medicine_name = medicine["medicine"]
+                                                        posology_dose = medicine["posology_dose"]
+                                                        posology_frequency = medicine["posology_frequency"]
+                                                        posology_query = """INSERT INTO posology (dose, frequency, medicine_id, prescriptions_id)
+                                                                            VALUES (%s, %s, (SELECT id FROM medicine WHERE nome = %s), %s)"""
+                                                        posology_values = (posology_dose, posology_frequency, medicine_name, prescription_id)
+
+                                                        cursor.execute(posology_query, posology_values)
+                                                    else:
+                                                        raise ValueError("Incomplete medicine information in payload")
+
+                                            conn.commit()
+                                            message['status'] = StatusCodes['success']
+                                            message['message'] = "Prescription created"
+                                            message['prescription_id'] = prescription_id
+
                                         else:
-                                            raise ValueError("Incomplete medicine information in payload")
+                                            message['status'] = StatusCodes['api_error']
+                                            message['message'] = "Validity date cannot be after the event date"
 
-                                conn.commit()
-                                message['status'] = StatusCodes['success']
-                                message['message'] = "Prescription created"
-                                message['prescription_id'] = prescription_id
+                                    else:
+                                        message['status'] = StatusCodes['api_error']
+                                        message['message'] = "Validity format incorrect"
+                                else:
+                                    message['status'] = StatusCodes['api_error']
+                                    message['message'] = "Id not valid"
                             else:
                                 message['status'] = StatusCodes['api_error']
                                 message['message'] = "Type not valid"
 
                 except (Exception, psycopg2.DatabaseError) as error:
                     logger.error(f'POST /prescription - error: {error}')
+
                     message = {
                         "status": StatusCodes['internal_error'],
                         "error": str(error)
@@ -1037,11 +1085,10 @@ def add_prescription():
     return flask.jsonify(message)
 
 
-
-
 @app.route("/bills/<int:bill_id>", methods=["POST"])
 def bill_payment(bill_id):
-    
+
+    logger.info(f'POST /bills/{bill_id}')
     try:
         payload = flask.request.get_json()
     except:
@@ -1104,9 +1151,13 @@ def bill_payment(bill_id):
                                             if payments_total + amount < billing_total:
 
 												# Create a new payment
+                                                #query_payment = "SELECT COALESCE(MAX(id), 0) + 1 FROM payment;"
+                                                #cursor.execute(query_payment)
+                                                #payment_id = cursor.fetchone()[0]
+            
                                                 query = """
 													INSERT INTO payment (id, amount, data, type, billing_id)
-													VALUES ((SELECT COALESCE(MAX(id), 0) + 1), %s, CURRENT_DATE, %s, %s)
+													VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM payment), %s, CURRENT_DATE, %s, %s)
 												"""
                                                 values = (amount, method, bill_id)
                                                 cursor.execute(query, values)
@@ -1167,7 +1218,7 @@ def bill_payment(bill_id):
                                 message["error"] = "Wrong amount (not an Integer)"  
                 
                 except (Exception, psycopg2.DatabaseError) as error:
-                    logger.error(f'POST /surgery - error: {error}')
+                    logger.error(f'POST /bills - error: {error}')
                     message = {
                         "status": StatusCodes['internal_error'],
                         "errors": str(error)
@@ -1241,7 +1292,78 @@ def get_top3_patients():
                             ORDER BY amount_spent DESC
                             LIMIT 3;
                         """
-                        cursor.execute(query)
+                        
+                        query_vamos_a_ver = """
+                        WITH patient_payments AS (
+                            SELECT hospitalization.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM hospitalization
+                            JOIN billing ON hospitalization.billing_id = billing.id
+                            GROUP BY hospitalization.pacient_person_id
+                            UNION ALL
+                            SELECT appointment.pacient_person_id AS patient_id, SUM(billing.total) AS total_amount
+                            FROM appointment
+                            JOIN billing ON appointment.billing_id = billing.id
+                            GROUP BY appointment.pacient_person_id
+                        ),
+                        patient_procedures AS (
+                            SELECT hospitalization.pacient_person_id AS patient_id, 
+                                COALESCE(ARRAY_AGG(jsonb_build_object('surgerie_id', surgeries.id, 'doctor_id', surgeries.doctor_contract_employee_person_id, 'date', surgeries.date_start)), '{}'::jsonb[]) AS procedures
+                            FROM surgeries
+                            JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
+                            GROUP BY hospitalization.pacient_person_id
+                            UNION ALL
+                            SELECT appointment.pacient_person_id AS patient_id, 
+                                COALESCE(ARRAY_AGG(jsonb_build_object('appointment_id', appointment.id, 'doctor_id', appointment.doctor_contract_employee_person_id, 'date', appointment.date_start)), '{}'::jsonb[]) AS procedures
+                            FROM appointment
+                            GROUP BY appointment.pacient_person_id
+                        )
+                        SELECT person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, 
+                            JSONB_AGG(patient_procedures.procedures) AS procedures
+                        FROM patient_payments
+                        JOIN patient_procedures ON patient_payments.patient_id = patient_procedures.patient_id
+                        JOIN person ON patient_payments.patient_id = person.id
+                        GROUP BY person.nome
+                        ORDER BY amount_spent DESC
+                        LIMIT 3;
+                        """
+                        
+                        query_tentar = """
+                        WITH patient_payments AS (
+                            SELECT pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM (
+                                SELECT hospitalization.pacient_person_id, billing.current_payment
+                                FROM hospitalization
+                                JOIN billing ON hospitalization.billing_id = billing.id
+                                UNION ALL
+                                SELECT appointment.pacient_person_id, billing.current_payment
+                                FROM appointment
+                                JOIN billing ON appointment.billing_id = billing.id
+                            ) AS unioned
+                            GROUP BY pacient_person_id
+                        ),
+                        patient_procedures AS (
+                            SELECT hospitalization.pacient_person_id AS patient_id, 
+                                COALESCE(ARRAY_AGG(jsonb_build_object('surgerie_id', surgeries.id, 'doctor_id', surgeries.doctor_contract_employee_person_id, 'date', surgeries.date_start)), '{}'::jsonb[]) AS procedures
+                            FROM surgeries
+                            JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
+                            GROUP BY hospitalization.pacient_person_id
+                            UNION ALL
+                            SELECT appointment.pacient_person_id AS patient_id, 
+                                COALESCE(ARRAY_AGG(jsonb_build_object('appointment_id', appointment.id, 'doctor_id', appointment.doctor_contract_employee_person_id, 'date', appointment.date_start)), '{}'::jsonb[]) AS procedures
+                            FROM appointment
+                            GROUP BY appointment.pacient_person_id
+                        )
+                        SELECT person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, 
+                            JSONB_AGG(patient_procedures.procedures) AS procedures
+                        FROM patient_payments
+                        JOIN patient_procedures ON patient_payments.patient_id = patient_procedures.patient_id
+                        JOIN person ON patient_payments.patient_id = person.id
+                        GROUP BY person.nome
+                        ORDER BY amount_spent DESC
+                        LIMIT 3;
+                        
+                        """
+                        cursor.execute(query_tentar)
                         top3_patients = cursor.fetchall()
 
                         # Format the results
@@ -1257,8 +1379,9 @@ def get_top3_patients():
                         })
 
             except Exception as e:
+                logger.error(f'GET /top3patients - error: {e}')
                 return flask.jsonify({
-                    "status": StatusCodes['api_error'],
+                    "status": StatusCodes['internal_error'],
                     "error": str(e)
                 })
         else:
@@ -1271,6 +1394,7 @@ def get_top3_patients():
             "status": StatusCodes['api_error'],
             "error": "No token provided."
         })
+
 
 if __name__ == '__main__':
 
@@ -1290,7 +1414,5 @@ if __name__ == '__main__':
     port = 8080
     app.run(host=host, debug=True, threaded=True, port=port)
     logger.info(f'API v1.0 online: http://{host}:{port}')
-    
-    
     
     
