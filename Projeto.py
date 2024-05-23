@@ -837,6 +837,7 @@ def schedule_surgery(hospitalization_id=None):
 
 @app.route("/bills/<int:bill_id>", methods=["POST"])
 def bill_payment(bill_id):
+    
     try:
         payload = flask.request.get_json()
     except:
@@ -870,8 +871,9 @@ def bill_payment(bill_id):
                                 cursor.execute(query, values)
                                 billing_status = cursor.fetchone()[0]
 
-                                if billing_status is False: #se a bill ainda nao foi totalmente paga
+                                if billing_status is True: # if billing is not payed
                                     if method in ["cash", "credit_card", "debit_card"]:
+                                        
 										# Get the total amount of the billing
                                         query = """
 											SELECT total
@@ -882,31 +884,39 @@ def bill_payment(bill_id):
                                         cursor.execute(query, values)
                                         billing_total = cursor.fetchone()[0]
 
-                                        if billing_total is None:
-                                            message["status"] = StatusCodes['api_error']
-                                            message["error"] = "No billing found with this id"
-                                        else:
+                                        if billing_total is not None:
+
                                             # Check the total amount of payments for the given billing_id
                                             query = """
 												SELECT COALESCE(SUM(amount), 0)
 												FROM payment
 												WHERE billing_id = %s
 											"""
+           
                                             values = (bill_id,)
                                             cursor.execute(query, values)
                                             payments_total = cursor.fetchone()[0]
 
-                                            if payments_total + amount > billing_total:
-                                                message["status"] = StatusCodes['api_error']
-                                                message["error"] = f"The amount exceeds the total billing. The amount left is: {billing_total - payments_total}."
-                                            else:
-												# Insert a new payment
+                                            if payments_total + amount < billing_total:
+
+												# Create a new payment
                                                 query = """
-													INSERT INTO payment (amount, date, type, billing_id)
-													VALUES (%s, CURRENT_DATE, %s, %s)
+													INSERT INTO payment (id, amount, data, type, billing_id)
+													VALUES ((SELECT COALESCE(MAX(id), 0) + 1), %s, CURRENT_DATE, %s, %s)
 												"""
                                                 values = (amount, method, bill_id)
                                                 cursor.execute(query, values)
+                                                
+                                                # update de current value of the billing
+                                                query_update_billing = """
+                                                    UPDATE billing
+                                                    SET current_payment = %s
+                                                    WHERE id = %s
+                                                """
+                                
+                                                values = (amount, bill_id,)
+                                                cursor.execute(query_update_billing, values)
+                                                conn.commit()
 
                                                 # Check if there are any more unpaid amounts for the given billing_id
                                                 remaining_amount = billing_total - payments_total - amount
@@ -935,6 +945,13 @@ def bill_payment(bill_id):
                                                         "status": StatusCodes['success'],
                                                         "results": "Payment done with success. The total billing has been paid."
                                                     }
+                                            else:
+                                                message["status"] = StatusCodes['api_error']
+                                                message["error"] = f"The amount exceeds the total billing. The amount left is: {billing_total - payments_total}."
+                                            
+                                        else:
+                                            message["status"] = StatusCodes['api_error']
+                                            message["error"] = "No billing found with this id"
                                     else:
                                         message["status"] = StatusCodes['api_error']
                                         message["error"] = "Wrong payment method"

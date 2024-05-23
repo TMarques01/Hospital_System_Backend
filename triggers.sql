@@ -15,8 +15,8 @@ ORDER BY id;
 -- Função para criar uma entrada na tabela billing ao inserir um agendamento
 CREATE OR REPLACE FUNCTION create_billing_on_appointment() RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO billing (id, total, data_billing)
-    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 50, CURRENT_DATE);
+    INSERT INTO billing (id, total, data_billing, status, current_payment)
+    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 50, CURRENT_DATE, TRUE, 0);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -37,8 +37,8 @@ CREATE OR REPLACE FUNCTION create_billing_on_hospitalization() RETURNS TRIGGER A
 DECLARE
     new_billing_id INTEGER;
 BEGIN
-    INSERT INTO billing (id, total, data_billing) -- cirurgia + hospitalização = 150
-    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 150, CURRENT_DATE)
+    INSERT INTO billing (id, total, data_billing, status, current_payment) -- cirurgia + hospitalização = 150
+    VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM billing), 150, CURRENT_DATE, TRUE, 0)
     RETURNING id INTO new_billing_id;
     
     NEW.billing_id := new_billing_id;
@@ -53,29 +53,3 @@ CREATE TRIGGER create_billing_on_hospitalization
 BEFORE INSERT ON hospitalization
 FOR EACH ROW
 EXECUTE FUNCTION create_billing_on_hospitalization();
-
-
-
--- Função para criar uma entrada na tabela hospitalization ao inserir uma cirurgia
-CREATE OR REPLACE FUNCTION create_hospitalization_on_surgery() RETURNS TRIGGER AS $$
-DECLARE
-    new_hosp_id INTEGER;
-BEGIN
-    INSERT INTO hospitalization (date_start, date_end, n_bed, assistants_contract_employee_person_id, pacient_person_id, nurse_contract_employee_person_id)
-    VALUES (NEW.date_surgery, NEW.date_surgery + INTERVAL '1 day', (SELECT COALESCE(MAX(n_bed), 0) + 1 FROM hospitalization), NEW.assistant_id, NEW.pacient_id, NEW.nurse_id)
-    RETURNING id INTO new_hosp_id;
-    
-    NEW.hospitalization_id := new_hosp_id;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Remover o trigger existente se existir
-DROP TRIGGER IF EXISTS surgery_before_insert ON surgeries;
-
--- Criar trigger para chamar a função create_hospitalization_on_surgery antes de inserir uma cirurgia
-CREATE TRIGGER surgery_before_insert
-BEFORE INSERT ON surgeries
-FOR EACH ROW
-EXECUTE FUNCTION create_hospitalization_on_surgery();
