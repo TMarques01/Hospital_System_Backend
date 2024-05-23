@@ -835,6 +835,210 @@ def schedule_surgery(hospitalization_id=None):
     return flask.jsonify(message)
 
 
+@app.route('/prescriptions/<int:patient_user_id>', methods=['GET'])
+def get_prescriptions(patient_user_id):
+    logger.info('GET /prescriptions/<patient_user_id>')
+    logger.debug(f'patient_user_id: {patient_user_id}')
+    
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+        
+    message = {}
+ 
+    try:
+        conn = db_connection()
+        cur = conn.cursor()
+    
+        if "token" in payload:
+            decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+            username = decoded_token["username"]
+            person= get_person_type(username)
+            
+            if person[1]=="nurse" or person[1]=="doctor" or person[1]=="assistant" or (person[1] == "pacient" and person[0] == patient_user_id):
+                logger.debug(f'patient_user_id: {person[1]}')
+                query = ("""
+                    SELECT pr.id, pr.validity, po.dose, po.frequency, m.nome , m.active_principle, se.name, sv.severity, sv.ocurrency
+                    FROM prescriptions pr
+                    JOIN posology po ON pr.id = po.prescriptions_id
+                    JOIN medicine m ON po.medicine_id = m.id
+                    LEFT JOIN severity sv ON m.id = sv.medicine_id
+                    LEFT JOIN side_effects se ON sv.side_effects_id_effect = se.id_effect
+                    LEFT JOIN appointment_prescriptions ap_pr ON pr.id = ap_pr.prescriptions_id
+                    LEFT JOIN appointment a ON ap_pr.appointment_id = a.id
+                    LEFT JOIN hospitalization_prescriptions hp ON pr.id = hp.prescriptions_id
+                    LEFT JOIN hospitalization h ON hp.hospitalization_id = h.id
+                    WHERE a.pacient_person_id = %s OR h.pacient_person_id = %s
+                """)
+
+                try:
+                    cur.execute(query, (patient_user_id,patient_user_id,))
+                    rows = cur.fetchall()
+                    prescriptions = {}
+                    
+                    for row in rows:
+                        prescription_id = row[0]
+                        if prescription_id not in prescriptions:
+                            prescriptions[prescription_id] = {
+                                'prescription_id': prescription_id,
+                                'validity': row[1],
+                                'medicines': {}
+                            }
+                        
+                        medicine_name = row[4]
+                        if medicine_name not in prescriptions[prescription_id]['medicines']:
+                            prescriptions[prescription_id]['medicines'][medicine_name] = {
+                                'medicine': medicine_name,
+                                'active_principle': row[5],
+                                'dose': row[2],
+                                'frequency': row[3],
+                                'side_effects': []
+                            }
+                        
+                        if row[6]:
+                            prescriptions[prescription_id]['medicines'][medicine_name]['side_effects'].append({
+                                'name': row[6],
+                                'severity': row[7],
+                                'ocurrency': row[8]
+                            })
+
+                    results = []
+                    for prescription in prescriptions.values():
+                        prescription_data = {
+                            'prescription_id': prescription['prescription_id'],
+                            'validity': prescription['validity'],
+                            'medicines': []
+                        }
+                        for medicine in prescription['medicines'].values():
+                            prescription_data['medicines'].append(medicine)
+                        results.append(prescription_data)
+                    
+                    message = {'status': StatusCodes['success'], 'results': results}
+                except (Exception, psycopg2.DatabaseError) as error:
+                    message = {
+                        "status": StatusCodes['internal_error'],
+                        "error": str(error)
+                    }
+                    conn.rollback()
+
+            
+            else:
+                message["status"] = StatusCodes['api_error']
+                message["error"] = "You don't have permission to do this action!"
+        else:
+            message["status"] = StatusCodes['api_error']
+            message["error"] = "Token not found!"
+    
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return flask.jsonify(message)
+
+
+
+@app.route('/prescription', methods=['POST'])
+def add_prescription():
+    try:
+        payload = flask.request.get_json()
+    except Exception as e:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+
+    message = {}
+
+    if "token" in payload:
+        try:
+            decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+        except Exception as e:
+            return flask.jsonify({
+                "status": StatusCodes['api_error'],
+                "error": "Invalid token"
+            })
+        
+        username = decoded_token["username"]
+        person = get_person_type(username)
+
+        if person[1] == "doctor":
+            if "type" in payload and "event_id" in payload and "validity" in payload and "medicines" in payload:
+                type = payload["type"]
+                event_id = payload["event_id"]
+                validity = payload["validity"]
+                
+                try:
+                    with db_connection() as conn:
+                        with conn.cursor() as cursor:
+                            if type in ["appointment", "hospitalization"]:
+                                logger.debug(f'POST /prescription - payload: {payload}')
+                                
+                                cursor.execute("SELECT MAX(id) FROM prescriptions;")
+                                prescription_id = cursor.fetchone()[0]
+                                if prescription_id is None:
+                                    prescription_id = 0
+                                prescription_id += 1
+
+                                prescription_query = """INSERT INTO prescriptions (id, validity) VALUES (%s, %s)"""
+                                cursor.execute(prescription_query, (prescription_id, validity))
+
+                                if type == "appointment":
+                                    query = """INSERT INTO appointment_prescriptions (appointment_id, prescriptions_id) VALUES (%s, %s)"""
+                                    cursor.execute(query, (event_id,prescription_id))
+                                    
+                                elif type == "hospitalization":
+                                    query = """INSERT INTO hospitalization_prescriptions (hospitalization_id, prescriptions_id) VALUES (%s, %s)"""
+                                    cursor.execute(query, (event_id, prescription_id))
+                                    
+                                if "medicines" in payload:
+                                    medicines = payload["medicines"]
+                                    for medicine in medicines:
+                                        if "medicine" in medicine and "dose" in medicine and "frequency" in medicine:
+                                            medicine_name = medicine["medicine"]
+                                            dose = medicine["dose"]
+                                            frequency = medicine["frequency"]
+                                            posology_query = """
+                                            INSERT INTO posology (dose, frequency, medicine_id, prescriptions_id)
+                                            VALUES (%s, %s, (SELECT id FROM medicine WHERE nome = %s), %s)"""
+                                            posology_values = (dose, frequency, medicine_name, prescription_id)
+                                            cursor.execute(posology_query, posology_values)
+                                        else:
+                                            raise ValueError("Incomplete medicine information in payload")
+
+                                conn.commit()
+                                message['status'] = StatusCodes['success']
+                                message['message'] = "Prescription created"
+                                message['prescription_id'] = prescription_id
+                            else:
+                                message['status'] = StatusCodes['api_error']
+                                message['message'] = "Type not valid"
+
+                except (Exception, psycopg2.DatabaseError) as error:
+                    logger.error(f'POST /prescription - error: {error}')
+                    message = {
+                        "status": StatusCodes['internal_error'],
+                        "error": str(error)
+                    }
+                    conn.rollback()
+            else:
+                message["status"] = StatusCodes['api_error']
+                message["error"] = "Wrong parameter in JSON file for prescription!"
+        else:
+            message["status"] = StatusCodes['api_error']
+            message["error"] = "You don't have permission to do this action!"
+    else:
+        message["status"] = StatusCodes['api_error']
+        message["error"] = "Token not found!"
+
+    return flask.jsonify(message)
+
+
+
+
 @app.route("/bills/<int:bill_id>", methods=["POST"])
 def bill_payment(bill_id):
     
