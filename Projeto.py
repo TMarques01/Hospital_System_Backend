@@ -1361,19 +1361,146 @@ def get_top3_patients():
                         ORDER BY amount_spent DESC
                         LIMIT 3;
                         """
-                        cursor.execute(query_tentar)
+                        
+                        query_quero_desistir ="""
+                        WITH patient_payments AS (
+                            SELECT hospitalization.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM hospitalization
+                            JOIN billing ON hospitalization.billing_id = billing.id
+                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM hospitalization.date_start)
+                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM hospitalization.date_start)
+                            GROUP BY hospitalization.pacient_person_id
+                            UNION ALL
+                            SELECT appointment.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM appointment
+                            JOIN billing ON appointment.billing_id = billing.id
+                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM appointment.date_start)
+                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM appointment.date_start)
+                            GROUP BY appointment.pacient_person_id
+                        ),
+                        hospitalization_procedures AS (
+                            SELECT hospitalization.pacient_person_id AS patient_id, 
+                                surgeries.id AS procedure_id, 
+                                surgeries.doctor_contract_employee_person_id AS doctor_id, 
+                                surgeries.date_start AS date,
+                                'hospitalization' AS procedure_type
+                            FROM surgeries
+                            JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
+                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM surgeries.date_start)
+                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM surgeries.date_start)
+                        ),
+                        appointment_procedures AS (
+                            SELECT appointment.pacient_person_id AS patient_id, 
+                                appointment.id AS procedure_id, 
+                                appointment.doctor_contract_employee_person_id AS doctor_id, 
+                                appointment.date_start AS date,
+                                'appointment' AS procedure_type
+                            FROM appointment
+                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM appointment.date_start)
+                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM appointment.date_start)
+                        ),
+                        all_procedures AS (
+                            SELECT * FROM hospitalization_procedures
+                            UNION ALL
+                            SELECT * FROM appointment_procedures
+                        ),
+                        top_spenders AS (
+                            SELECT pp.patient_id, p.nome AS patient_name, SUM(pp.total_amount) AS total_spent
+                            FROM patient_payments pp
+                            JOIN person p ON pp.patient_id = p.id
+                            GROUP BY pp.patient_id, p.nome
+                            ORDER BY total_spent DESC
+                            LIMIT 3
+                        )
+                        SELECT ts.patient_name, ts.total_spent, ap.procedure_id, ap.doctor_id, ap.date, ap.procedure_type
+                        FROM top_spenders ts
+                        JOIN all_procedures ap ON ts.patient_id = ap.patient_id
+                        ORDER BY ts.total_spent DESC, ts.patient_name, ap.date;
+                        """
+                        
+                        query_melhorzinha = """
+                        WITH patient_payments AS (
+                            SELECT hospitalization.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM hospitalization
+                            JOIN billing ON hospitalization.billing_id = billing.id
+                            --WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM hospitalization.date_start)
+                            --AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM hospitalization.date_start)
+                            GROUP BY hospitalization.pacient_person_id
+                            UNION ALL
+                            SELECT appointment.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
+                            FROM appointment
+                            JOIN billing ON appointment.billing_id = billing.id
+                            --WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM appointment.date_start)
+                            --AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM appointment.date_start)
+                            GROUP BY appointment.pacient_person_id
+                        ),
+                        hospitalization_procedures AS (
+                            SELECT hospitalization.pacient_person_id AS patient_id, 
+                                surgeries.id AS procedure_id, 
+                                surgeries.doctor_contract_employee_person_id AS doctor_id, 
+                                surgeries.date_start AS date,
+                                'hospitalization' AS procedure_type
+                            FROM surgeries
+                            JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
+                            --WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM surgeries.date_start)
+                            --AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM surgeries.date_start)
+                        ),
+                        appointment_procedures AS (
+                            SELECT appointment.pacient_person_id AS patient_id, 
+                                appointment.id AS procedure_id, 
+                                appointment.doctor_contract_employee_person_id AS doctor_id, 
+                                appointment.date_start AS date,
+                                'appointment' AS procedure_type
+                            FROM appointment
+                            --WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM appointment.date_start)
+                            --AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM appointment.date_start)
+                        ),
+                        all_procedures AS (
+                            SELECT * FROM hospitalization_procedures
+                            UNION ALL
+                            SELECT * FROM appointment_procedures
+                        ),
+                        top_spenders AS (
+                            SELECT pp.patient_id, p.nome AS patient_name, SUM(pp.total_amount) AS total_spent
+                            FROM patient_payments pp
+                            JOIN person p ON pp.patient_id = p.id
+                            GROUP BY pp.patient_id, p.nome
+                            ORDER BY total_spent DESC
+                            LIMIT 3
+                        ),
+                        procedures_grouped AS (
+                            SELECT ap.patient_id,
+                                JSON_AGG(json_build_object(
+                                    'procedure_id', ap.procedure_id,
+                                    'doctor_id', ap.doctor_id,
+                                    'date', ap.date,
+                                    'procedure_type', ap.procedure_type
+                                )) AS procedures
+                            FROM all_procedures ap
+                            GROUP BY ap.patient_id
+                        )
+                        SELECT json_agg(json_build_object(
+                            'patient_name', ts.patient_name,
+                            'total_spent', ts.total_spent,
+                            'procedures', pg.procedures
+                        ))
+                        FROM top_spenders ts
+                        LEFT JOIN procedures_grouped pg ON ts.patient_id = pg.patient_id;
+                        """
+                        
+                        cursor.execute(query_melhorzinha)
                         top3_patients = cursor.fetchall()
 
                         # Format the results
-                        formatted_results = [{
-                            "patient_name": row[0],
-                            "amount_spent": row[1],
-                            "procedures": row[2]
-                        } for row in top3_patients]
+                        #formatted_results = [{
+                        #    "patient_name": row[0],
+                        #    "amount_spent": row[1],
+                        #    "procedures": row[2]
+                        #} for row in top3_patients]
 
                         return flask.jsonify({
                             "status": StatusCodes['success'],
-                            "results": formatted_results
+                            "results": top3_patients
                         })
 
             except Exception as e:
