@@ -1395,45 +1395,49 @@ def daily_summary(date):
                     username = decoded_token["username"]
                     person_type = get_person_type(username)
                     if person_type[1] == "assistant":
-                        
-                        cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
-                        query = """
-                            SELECT 
-                                SUM(payment_amount) AS amount_spent,
-                                COUNT(DISTINCT surgery_id) AS surgeries,
-                                COUNT(DISTINCT prescription_id) AS prescriptions
-                            FROM hospitalization
-                            LEFT JOIN payment ON hospitalization.id = payment.hospitalization_id
-                            LEFT JOIN surgeries ON hospitalization.id = surgeries.hospitalization_id
-                            LEFT JOIN prescriptions ON hospitalization.id = prescriptions.hospitalization_id
-                            WHERE DATE(hospitalization.date_start) = DATE(%s)
-                        """
-            
-                        query_muit_fixe = """
-                        SELECT
-                        h.id AS hospitalization_id,
-                        COUNT(DISTINCT s.id) AS surgery_count,
-                        COUNT(DISTINCT p.id) AS payment_count,
-                        COUNT(DISTINCT pr.id) AS prescription_count
-                        FROM hospitalization h
-                        LEFT JOIN surgeries s ON h.id = s.hospitalization_id --AND s.date_start::date = %s
-                        LEFT JOIN payment p ON h.billing_id = p.billing_id --AND p.data::date = %s
-                        LEFT JOIN hospitalization_prescriptions hp ON h.id = hp.hospitalization_id
-                        LEFT JOIN prescriptions pr ON hp.prescriptions_id = pr.id --AND pr.validity::date = %s
-                        WHERE DATE(h.date_start) = DATE(%s)
-                        GROUP BY h.id;
-                        """
-                        cursor.execute(query_muit_fixe, (date,date,date,date,))
-                        result = cursor.fetchone()
+                        if check_date2(date):
+                            
+                            query_muit_fixe = """
+                            SELECT
+                                h.id AS hospitalization_id,
+                                COUNT(DISTINCT s.id) AS surgery_count,
+                                COUNT(DISTINCT p.id) AS payment_count,
+                                COUNT(DISTINCT pr.id) AS prescription_count,
+                                COALESCE(SUM(p.amount), 0) AS total_payment_amount
+                            FROM hospitalization h
+                            LEFT JOIN surgeries s ON h.id = s.hospitalization_id AND DATE(s.date_start) = DATE(%s)
+                            LEFT JOIN payment p ON h.billing_id = p.billing_id AND DATE(p.data) = DATE(%s)
+                            LEFT JOIN hospitalization_prescriptions hp ON h.id = hp.hospitalization_id
+                            LEFT JOIN prescriptions pr ON hp.prescriptions_id = pr.id AND DATE(pr.validity) = DATE(%s)
+                            WHERE DATE(h.date_start) = DATE(%s)
+                            GROUP BY h.id;
+                            """
+                            
+                            cursor.execute(query_muit_fixe, (date,date,date,date,))
+                            result = cursor.fetchone()
+                            
+                            if result is not None:
 
-                        return flask.jsonify({
-                            "status": StatusCodes['success'],
-                            "results": {
-                                "amount_spent": result[0],
-                                "surgeries": result[1],
-                                "prescriptions": result[2]
-                            }
-                        })
+                                return flask.jsonify({
+                                    "status": StatusCodes['success'],
+                                    "results": {
+                                        "hospitalization_id": result[0],
+                                        "sugerie_count": result[1],
+                                        "payment_count": result[2],
+                                        "prescription_count": result[3],
+                                        "total_payment_amount": result[4]
+                                    }
+                                })
+                            else:
+                                return flask.jsonify({
+                                    "status": StatusCodes['success'],
+                                    "results": {}
+                                })
+                        else:
+                            return flask.jsonify({
+                                "status": StatusCodes['api_error'],
+                                "error": "Invalid date format"
+                            })
                     else:
                         return flask.jsonify({
                             "status": StatusCodes['api_error'],
