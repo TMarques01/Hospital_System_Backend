@@ -1397,7 +1397,7 @@ def daily_summary(date):
                     if person_type[1] == "assistant":
                         if check_date2(date):
                             
-                            query_muit_fixe = """
+                            query = """
                             SELECT
                                 h.id AS hospitalization_id,
                                 COUNT(DISTINCT s.id) AS surgery_count,
@@ -1413,7 +1413,7 @@ def daily_summary(date):
                             GROUP BY h.id;
                             """
                             
-                            cursor.execute(query_muit_fixe, (date,date,date,date,))
+                            cursor.execute(query, (date,date,date,date,))
                             result = cursor.fetchone()
                             
                             if result is not None:
@@ -1454,8 +1454,83 @@ def daily_summary(date):
             "status": StatusCodes['error'],
             "errors": str(e)
         })
+        
 
+@app.route('/report', methods=['GET'])
+def montly_report():
+    
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+    
+    if "token" in payload:
+        decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+        username = decoded_token["username"]
+        person_type = get_person_type(username)
+        if person_type[1] == "assistant":
+            try:
+                with db_connection() as conn:
+                    with conn.cursor() as cursor:
+                                                      
+                        query = """
+                        SELECT 
+                            TO_CHAR(s.date_start, 'YYYY-MM') AS month,
+                            p.nome AS doctor,
+                            COUNT(*) AS total_surgeries
+                        FROM surgeries s
+                        JOIN doctor d ON s.doctor_contract_employee_person_id = d.contract_employee_person_id
+                        JOIN person p ON d.contract_employee_person_id = p.id
+                        WHERE s.date_start >= NOW() - INTERVAL '1 YEAR'
+                        GROUP BY month, p.nome
+                        ORDER BY month DESC, total_surgeries DESC
+                        """
+                    
+                        cursor.execute(query)
+                        months = cursor.fetchall()
+                        
+                        if months is not None:
+                            results = []
+                            for month in months:
+                                results.append({
+                                    "month": month[0],
+                                    "doctor": month[1],
+                                    "total_surgeries": month[2]
+                                })
+        
+                            message = {
+                                "status": StatusCodes['success'],
+                                "results": results
+                            }
+                        else:
+                            message = {
+                                "status": StatusCodes['error'],
+                                "message": {}
+                            }
+                            
+            except Exception as e:
+                logger.error(f'GET /report - error: {e}')
+                return flask.jsonify({
+                    "status": StatusCodes['error'],
+                    "errors": str(e)
+                })  
+        else:
+            return flask.jsonify({
+                "status": StatusCodes['api_error'],
+                "error": "Only assistants can use this endpoint."
+            })                              
+    else:
+        message = {
+            "status": StatusCodes['error'],
+            "message": "No token provided"
+        }
+        
+    return flask.jsonify(message)
 
+    
 if __name__ == '__main__':
 
     # set up logging
