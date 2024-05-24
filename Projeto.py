@@ -20,7 +20,6 @@ StatusCodes = {
     'internal_error': 500
 }
 
-
 # ====================================
 # DB acess
 # ====================================
@@ -1167,11 +1166,6 @@ def bill_payment(bill_id):
                                             payments_total = cursor.fetchone()[0]
 
                                             if payments_total + amount < billing_total:
-
-												# Create a new payment
-                                                #query_payment = "SELECT COALESCE(MAX(id), 0) + 1 FROM payment;"
-                                                #cursor.execute(query_payment)
-                                                #payment_id = cursor.fetchone()[0]
             
                                                 query = """
 													INSERT INTO payment (id, amount, data, type, billing_id)
@@ -1549,5 +1543,4 @@ if __name__ == '__main__':
     port = 8080
     app.run(host=host, debug=True, threaded=True, port=port)
     logger.info(f'API v1.0 online: http://{host}:{port}')
-    
     
