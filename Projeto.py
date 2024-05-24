@@ -728,8 +728,9 @@ def schedule_surgery(hospitalization_id=None):
                             if check_date(date_start) and check_date(date_end) and compare_dates(date_start, date_end):
                                 if is_doctor_available(doctor_user_id, date_start, date_end):
                                     if are_nurses_available(nurses, date_start, date_end, 1):
-                                        
                                         if hospitalization_id is None:  # if don't exist a hospitalization
+                                            
+                                            cursor.execute("LOCK TABLE hospitalization IN EXCLUSIVE MODE")#nao temos de dar lock á billing em nenhum siito porque so criamos uma, quando se cria a hospitalização, e ja temos o lock para a hospitalização
                                             cursor.execute("SELECT COALESCE(MAX(id), 0) FROM hospitalization;")
                                             hosp_id = cursor.fetchone()[0]
                                             if hosp_id is None:
@@ -746,6 +747,7 @@ def schedule_surgery(hospitalization_id=None):
                                             cursor.execute(query, values)
                                             hospitalization_id = cursor.fetchone()[0]
                                             
+											cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
                                             query = """
                                                 INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hospitalization_id)
                                                 VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM surgeries), %s, %s, (SELECT COALESCE(MAX(n_room),0) + 1 FROM surgeries), %s, %s, %s)
@@ -770,7 +772,7 @@ def schedule_surgery(hospitalization_id=None):
                                             }
                                                 
                                         else:  # if exist a hospitalization
-                                            
+                                            cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
                                             cursor.execute("SELECT COALESCE(MAX(id), 0) FROM surgeries;")
                                             surgery_id = cursor.fetchone()[0]
                                             if surgery_id is None:
@@ -795,6 +797,15 @@ def schedule_surgery(hospitalization_id=None):
                                             surgery_id = cursor.fetchone()[0]
                                             
                                             # updating the billing (100€ for each surgery)
+                                            query = """
+												SELECT *
+												FROM billing
+												WHERE hospitalization_id = %s
+												FOR UPDATE
+											"""
+                                            
+											cursor.execute(query, (hospitalization_id,))  #so bloquear a linha do billing que vamos atualizar
+                                            
                                             query_update_billing = "UPDATE billing SET current_payment = current_payment + 100 WHERE id = (SELECT billing_id FROM hospitalization WHERE id = %s)"
                                             values_update_billing = (hospitalization_id,)
                                             
@@ -1104,7 +1115,7 @@ def bill_payment(bill_id):
         username = decoded_token["username"]
         person_type = get_person_type(username)
         
-        if person_type[1] == "pacient":  # verify if the user is an assistant
+        if person_type[1] == "pacient":  # verify if the user is an patient
             if "amount" in payload and "payment_method" in payload:
                 amount = payload["amount"]
                 method = payload["payment_method"]
@@ -1124,7 +1135,14 @@ def bill_payment(bill_id):
 
                                 if billing_status is True: # if billing is not payed
                                     if method in ["cash", "credit_card", "debit_card"]:
-                                        
+                                        query = """
+											SELECT *
+											FROM billing
+											WHERE id = %s
+											FOR UPDATE
+										"""
+										cursor.execute(query, (bill_id,))
+
 										# Get the total amount of the billing
                                         query = """
 											SELECT total
@@ -1260,6 +1278,7 @@ def get_top3_patients():
                 with db_connection() as conn:
                     with conn.cursor() as cursor:
                         # Get the top 3 patients who spent the most
+                        cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
                         query = """
                             WITH patient_payments AS (
                                 SELECT hospitalization.pacient_person_id AS patient_id, SUM(billing.total) AS total_amount
@@ -1520,6 +1539,42 @@ def get_top3_patients():
             "error": "No token provided."
         })
 
+
+@app.route('/daily/<date>', methods=['GET']) #year-month-day
+def daily_summary(date):
+    try:
+        with db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                query = """
+					SELECT 
+						SUM(payment_amount) AS amount_spent,
+						COUNT(DISTINCT surgery_id) AS surgeries,
+						COUNT(DISTINCT prescription_id) AS prescriptions
+					FROM hospitalizations
+					LEFT JOIN payments ON hospitalizations.id = payments.hospitalization_id
+					LEFT JOIN surgeries ON hospitalizations.id = surgeries.hospitalization_id
+					LEFT JOIN prescriptions ON hospitalizations.id = prescriptions.hospitalization_id
+					WHERE DATE(hospitalizations.date_start) = DATE(%s)
+				"""
+                cursor.execute(query, (date,))
+                result = cursor.fetchone()
+
+                return flask.jsonify({
+                    "status": StatusCodes['success'],
+                    "results": {
+                        "amount_spent": result[0],
+                        "surgeries": result[1],
+                        "prescriptions": result[2]
+                    }
+                })
+
+    except Exception as e:
+        logger.error(f'GET /dbproj/daily/{date} - error: {e}')
+        return flask.jsonify({
+            "status": StatusCodes['error'],
+            "errors": str(e)
+        })
 
 if __name__ == '__main__':
 
