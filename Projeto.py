@@ -747,7 +747,7 @@ def schedule_surgery(hospitalization_id=None):
                                             cursor.execute(query, values)
                                             hospitalization_id = cursor.fetchone()[0]
                                             
-											cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
+                                            cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
                                             query = """
                                                 INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hospitalization_id)
                                                 VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM surgeries), %s, %s, (SELECT COALESCE(MAX(n_room),0) + 1 FROM surgeries), %s, %s, %s)
@@ -804,7 +804,7 @@ def schedule_surgery(hospitalization_id=None):
 												FOR UPDATE
 											"""
                                             
-											cursor.execute(query, (hospitalization_id,))  #so bloquear a linha do billing que vamos atualizar
+                                            cursor.execute(query, (hospitalization_id,))  #so bloquear a linha do billing que vamos atualizar
                                             
                                             query_update_billing = "UPDATE billing SET current_payment = current_payment + 100 WHERE id = (SELECT billing_id FROM hospitalization WHERE id = %s)"
                                             values_update_billing = (hospitalization_id,)
@@ -1141,7 +1141,7 @@ def bill_payment(bill_id):
 											WHERE id = %s
 											FOR UPDATE
 										"""
-										cursor.execute(query, (bill_id,))
+                                        cursor.execute(query, (bill_id,))
 
 										# Get the total amount of the billing
                                         query = """
@@ -1279,163 +1279,6 @@ def get_top3_patients():
                     with conn.cursor() as cursor:
                         # Get the top 3 patients who spent the most
                         cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
-                        query = """
-                            WITH patient_payments AS (
-                                SELECT hospitalization.pacient_person_id AS patient_id, SUM(billing.total) AS total_amount
-                                FROM hospitalization
-                                JOIN billing ON hospitalization.billing_id = billing.id
-                                GROUP BY hospitalization.pacient_person_id
-                                UNION ALL
-                                SELECT appointment.pacient_person_id AS patient_id, SUM(billing.total) AS total_amount
-                                FROM appointment
-                                JOIN billing ON appointment.billing_id = billing.id
-                                GROUP BY appointment.pacient_person_id
-                            ),
-                            patient_procedures AS (
-                                SELECT hospitalization.pacient_person_id AS patient_id, 
-                                       ARRAY_AGG(json_build_object('id', surgeries.id, 'doctor_id', surgeries.doctor_contract_employee_person_id, 'date', surgeries.date_start)) AS procedures
-                                FROM surgeries
-                                JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
-                                GROUP BY hospitalization.pacient_person_id
-                                UNION ALL
-                                SELECT appointment.pacient_person_id AS patient_id, 
-                                       ARRAY_AGG(json_build_object('id', appointment.id, 'doctor_id', appointment.doctor_contract_employee_person_id, 'date', appointment.date_start)) AS procedures
-                                FROM appointment
-                                GROUP BY appointment.pacient_person_id
-                            )
-                            SELECT person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, MAX(patient_procedures.procedures) AS procedures
-                            FROM patient_payments
-                            JOIN patient_procedures ON patient_payments.patient_id = patient_procedures.patient_id
-                            JOIN person ON patient_payments.patient_id = person.id
-                            GROUP BY person.nome
-                            ORDER BY amount_spent DESC
-                            LIMIT 3;
-                        """
-                        
-                        query_vamos_a_ver = """
-                        WITH patient_payments AS (
-                            SELECT hospitalization.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
-                            FROM hospitalization
-                            JOIN billing ON hospitalization.billing_id = billing.id
-                            GROUP BY hospitalization.pacient_person_id
-                            UNION ALL
-                            SELECT appointment.pacient_person_id AS patient_id, SUM(billing.total) AS total_amount
-                            FROM appointment
-                            JOIN billing ON appointment.billing_id = billing.id
-                            GROUP BY appointment.pacient_person_id
-                        ),
-                        patient_procedures AS (
-                            SELECT hospitalization.pacient_person_id AS patient_id, 
-                                COALESCE(ARRAY_AGG(jsonb_build_object('surgerie_id', surgeries.id, 'doctor_id', surgeries.doctor_contract_employee_person_id, 'date', surgeries.date_start)), '{}'::jsonb[]) AS procedures
-                            FROM surgeries
-                            JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
-                            GROUP BY hospitalization.pacient_person_id
-                            UNION ALL
-                            SELECT appointment.pacient_person_id AS patient_id, 
-                                COALESCE(ARRAY_AGG(jsonb_build_object('appointment_id', appointment.id, 'doctor_id', appointment.doctor_contract_employee_person_id, 'date', appointment.date_start)), '{}'::jsonb[]) AS procedures
-                            FROM appointment
-                            GROUP BY appointment.pacient_person_id
-                        )
-                        SELECT person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, 
-                            JSONB_AGG(patient_procedures.procedures) AS procedures
-                        FROM patient_payments
-                        JOIN patient_procedures ON patient_payments.patient_id = patient_procedures.patient_id
-                        JOIN person ON patient_payments.patient_id = person.id
-                        GROUP BY person.nome
-                        ORDER BY amount_spent DESC
-                        LIMIT 3;
-                        """
-                        
-                        query_tentar = """
-                        WITH patient_payments AS (
-                            SELECT hospitalization.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
-                            FROM hospitalization
-                            JOIN billing ON hospitalization.billing_id = billing.id
-                            GROUP BY hospitalization.pacient_person_id
-                            UNION ALL
-                            SELECT appointment.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
-                            FROM appointment
-                            JOIN billing ON appointment.billing_id = billing.id
-                            GROUP BY appointment.pacient_person_id
-                        ),
-                        patient_procedures AS (
-                            SELECT hospitalization.pacient_person_id AS patient_id, 
-                                COALESCE(ARRAY_AGG(jsonb_build_object('surgerie_id', surgeries.id, 'doctor_id', surgeries.doctor_contract_employee_person_id, 'date', surgeries.date_start)), '{}'::jsonb[]) AS procedures
-                            FROM surgeries
-                            JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
-                            GROUP BY hospitalization.pacient_person_id
-                            UNION ALL
-                            SELECT appointment.pacient_person_id AS patient_id, 
-                                COALESCE(ARRAY_AGG(jsonb_build_object('appointment_id', appointment.id, 'doctor_id', appointment.doctor_contract_employee_person_id, 'date', appointment.date_start)), '{}'::jsonb[]) AS procedures
-                            FROM appointment
-                            GROUP BY appointment.pacient_person_id
-                        )
-                        SELECT 
-                        person.nome AS patient_name, SUM(patient_payments.total_amount) AS amount_spent, 
-                            JSONB_AGG(patient_procedures.procedures) AS procedures
-                        FROM patient_payments
-                        JOIN patient_procedures ON patient_payments.patient_id = patient_procedures.patient_id
-                        JOIN person ON patient_payments.patient_id = person.id
-                        GROUP BY person.nome
-                        ORDER BY amount_spent DESC
-                        LIMIT 3;
-                        """
-                        
-                        query_quero_desistir ="""
-                        WITH patient_payments AS (
-                            SELECT hospitalization.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
-                            FROM hospitalization
-                            JOIN billing ON hospitalization.billing_id = billing.id
-                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM hospitalization.date_start)
-                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM hospitalization.date_start)
-                            GROUP BY hospitalization.pacient_person_id
-                            UNION ALL
-                            SELECT appointment.pacient_person_id AS patient_id, SUM(COALESCE(billing.current_payment, 0)) AS total_amount
-                            FROM appointment
-                            JOIN billing ON appointment.billing_id = billing.id
-                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM appointment.date_start)
-                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM appointment.date_start)
-                            GROUP BY appointment.pacient_person_id
-                        ),
-                        hospitalization_procedures AS (
-                            SELECT hospitalization.pacient_person_id AS patient_id, 
-                                surgeries.id AS procedure_id, 
-                                surgeries.doctor_contract_employee_person_id AS doctor_id, 
-                                surgeries.date_start AS date,
-                                'hospitalization' AS procedure_type
-                            FROM surgeries
-                            JOIN hospitalization ON surgeries.hospitalization_id = hospitalization.id
-                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM surgeries.date_start)
-                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM surgeries.date_start)
-                        ),
-                        appointment_procedures AS (
-                            SELECT appointment.pacient_person_id AS patient_id, 
-                                appointment.id AS procedure_id, 
-                                appointment.doctor_contract_employee_person_id AS doctor_id, 
-                                appointment.date_start AS date,
-                                'appointment' AS procedure_type
-                            FROM appointment
-                            WHERE EXTRACT(MONTH FROM CURRENT_DATE) = EXTRACT(MONTH FROM appointment.date_start)
-                            AND EXTRACT(YEAR FROM CURRENT_DATE) = EXTRACT(YEAR FROM appointment.date_start)
-                        ),
-                        all_procedures AS (
-                            SELECT * FROM hospitalization_procedures
-                            UNION ALL
-                            SELECT * FROM appointment_procedures
-                        ),
-                        top_spenders AS (
-                            SELECT pp.patient_id, p.nome AS patient_name, SUM(pp.total_amount) AS total_spent
-                            FROM patient_payments pp
-                            JOIN person p ON pp.patient_id = p.id
-                            GROUP BY pp.patient_id, p.nome
-                            ORDER BY total_spent DESC
-                            LIMIT 3
-                        )
-                        SELECT ts.patient_name, ts.total_spent, ap.procedure_id, ap.doctor_id, ap.date, ap.procedure_type
-                        FROM top_spenders ts
-                        JOIN all_procedures ap ON ts.patient_id = ap.patient_id
-                        ORDER BY ts.total_spent DESC, ts.patient_name, ap.date;
-                        """
                         
                         query_melhorzinha = """
                         WITH patient_payments AS (
@@ -1510,13 +1353,6 @@ def get_top3_patients():
                         cursor.execute(query_melhorzinha)
                         top3_patients = cursor.fetchall()
 
-                        # Format the results
-                        #formatted_results = [{
-                        #    "patient_name": row[0],
-                        #    "amount_spent": row[1],
-                        #    "procedures": row[2]
-                        #} for row in top3_patients]
-
                         return flask.jsonify({
                             "status": StatusCodes['success'],
                             "results": top3_patients
@@ -1542,39 +1378,79 @@ def get_top3_patients():
 
 @app.route('/daily/<date>', methods=['GET']) #year-month-day
 def daily_summary(date):
+    
+    try:
+        payload = flask.request.get_json()
+    except:
+        return flask.jsonify({
+            "status": StatusCodes['api_error'],
+            "error": "No json"
+        })
+    
     try:
         with db_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
-                query = """
-					SELECT 
-						SUM(payment_amount) AS amount_spent,
-						COUNT(DISTINCT surgery_id) AS surgeries,
-						COUNT(DISTINCT prescription_id) AS prescriptions
-					FROM hospitalizations
-					LEFT JOIN payments ON hospitalizations.id = payments.hospitalization_id
-					LEFT JOIN surgeries ON hospitalizations.id = surgeries.hospitalization_id
-					LEFT JOIN prescriptions ON hospitalizations.id = prescriptions.hospitalization_id
-					WHERE DATE(hospitalizations.date_start) = DATE(%s)
-				"""
-                cursor.execute(query, (date,))
-                result = cursor.fetchone()
+                if "token" in payload:
+                    decoded_token = jwt.decode(payload["token"], secret_key, algorithms=['HS256'])
+                    username = decoded_token["username"]
+                    person_type = get_person_type(username)
+                    if person_type[1] == "assistant":
+                        
+                        cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                        query = """
+                            SELECT 
+                                SUM(payment_amount) AS amount_spent,
+                                COUNT(DISTINCT surgery_id) AS surgeries,
+                                COUNT(DISTINCT prescription_id) AS prescriptions
+                            FROM hospitalization
+                            LEFT JOIN payment ON hospitalization.id = payment.hospitalization_id
+                            LEFT JOIN surgeries ON hospitalization.id = surgeries.hospitalization_id
+                            LEFT JOIN prescriptions ON hospitalization.id = prescriptions.hospitalization_id
+                            WHERE DATE(hospitalization.date_start) = DATE(%s)
+                        """
+            
+                        query_muit_fixe = """
+                        SELECT
+                        h.id AS hospitalization_id,
+                        COUNT(DISTINCT s.id) AS surgery_count,
+                        COUNT(DISTINCT p.id) AS payment_count,
+                        COUNT(DISTINCT pr.id) AS prescription_count
+                        FROM hospitalization h
+                        LEFT JOIN surgeries s ON h.id = s.hospitalization_id --AND s.date_start::date = %s
+                        LEFT JOIN payment p ON h.billing_id = p.billing_id --AND p.data::date = %s
+                        LEFT JOIN hospitalization_prescriptions hp ON h.id = hp.hospitalization_id
+                        LEFT JOIN prescriptions pr ON hp.prescriptions_id = pr.id --AND pr.validity::date = %s
+                        WHERE DATE(h.date_start) = DATE(%s)
+                        GROUP BY h.id;
+                        """
+                        cursor.execute(query_muit_fixe, (date,date,date,date,))
+                        result = cursor.fetchone()
 
-                return flask.jsonify({
-                    "status": StatusCodes['success'],
-                    "results": {
-                        "amount_spent": result[0],
-                        "surgeries": result[1],
-                        "prescriptions": result[2]
-                    }
-                })
-
+                        return flask.jsonify({
+                            "status": StatusCodes['success'],
+                            "results": {
+                                "amount_spent": result[0],
+                                "surgeries": result[1],
+                                "prescriptions": result[2]
+                            }
+                        })
+                    else:
+                        return flask.jsonify({
+                            "status": StatusCodes['api_error'],
+                            "error": "Only assistants can use this endpoint."
+                        })
+                else:
+                    return flask.jsonify({
+                        "status": StatusCodes['api_error'],
+                        "error": "Only assistants can use this endpoint."
+                    })
     except Exception as e:
         logger.error(f'GET /dbproj/daily/{date} - error: {e}')
         return flask.jsonify({
             "status": StatusCodes['error'],
             "errors": str(e)
         })
+
 
 if __name__ == '__main__':
 
