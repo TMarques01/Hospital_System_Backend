@@ -679,6 +679,7 @@ def see_appointment(patient_user_id):
                     message = {'status': StatusCodes['success'], 'results': results}
 
                 except (Exception, psycopg2.DatabaseError) as error:
+                    logger.error(f'GET /appointments/<patient_user_id> - error: {error}')
                     message = {
                         "status": StatusCodes['internal_error'],
                         "error": str(error)
@@ -965,6 +966,7 @@ def get_prescriptions(patient_user_id):
                     
                     message = {'status': StatusCodes['success'], 'results': results}
                 except (Exception, psycopg2.DatabaseError) as error:
+                    logger.error(f'GET /prescriptions/<patient_user_id> - error: {error}')
                     message = {
                         "status": StatusCodes['internal_error'],
                         "error": str(error)
@@ -988,6 +990,7 @@ def get_prescriptions(patient_user_id):
 
 @app.route('/prescription', methods=['POST'])
 def add_prescription():
+    logger.info('POST /prescription')
     try:
         payload = flask.request.get_json()
     except Exception as e:
@@ -1269,6 +1272,7 @@ def bill_payment(bill_id):
 
 @app.route("/top3", methods=["GET"])
 def get_top3_patients():
+    logger.info('GET /top3patients')
     try:
         payload = flask.request.get_json()
     except:
@@ -1470,8 +1474,9 @@ def daily_summary(date):
         
 
 @app.route('/report', methods=['GET'])
-def montly_report():
+def monthly_report():
     
+    logger.info('GET /report')
     try:
         payload = flask.request.get_json()
     except:
@@ -1490,16 +1495,31 @@ def montly_report():
                     with conn.cursor() as cursor:
                         cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')                            
                         query = """
+                        WITH monthly_surgeries AS (
+                            SELECT 
+                                TO_CHAR(s.date_start, 'YYYY-MM') AS month,
+                                p.nome AS doctor,
+                                COUNT(*) AS total_surgeries
+                            FROM surgeries s
+                            JOIN doctor d ON s.doctor_contract_employee_person_id = d.contract_employee_person_id
+                            JOIN person p ON d.contract_employee_person_id = p.id
+                            WHERE s.date_start >= NOW() - INTERVAL '1 YEAR'
+                            GROUP BY month, p.nome
+                        ),
+                        max_surgeries AS (
+                            SELECT 
+                                month, 
+                                MAX(total_surgeries) AS max_surgeries
+                            FROM monthly_surgeries
+                            GROUP BY month
+                        )
                         SELECT 
-                            TO_CHAR(s.date_start, 'YYYY-MM') AS month,
-                            p.nome AS doctor,
-                            COUNT(*) AS total_surgeries
-                        FROM surgeries s
-                        JOIN doctor d ON s.doctor_contract_employee_person_id = d.contract_employee_person_id
-                        JOIN person p ON d.contract_employee_person_id = p.id
-                        WHERE s.date_start >= NOW() - INTERVAL '1 YEAR'
-                        GROUP BY month, p.nome
-                        ORDER BY month DESC, total_surgeries DESC
+                            ms.month, 
+                            ms.doctor, 
+                            ms.total_surgeries
+                        FROM monthly_surgeries ms
+                        JOIN max_surgeries mx ON ms.month = mx.month AND ms.total_surgeries = mx.max_surgeries
+                        ORDER BY ms.month DESC, ms.total_surgeries DESC
                         """
                     
                         cursor.execute(query)
