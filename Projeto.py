@@ -58,20 +58,23 @@ def check_date(date, format="%Y-%m-%d %H:%M:%S"):
     except ValueError:
         return False
 
-# check if the date is in the correct format 
+# check if the date is in the correct format and not before the current date
 def check_date2(date, format="%Y-%m-%d"):
-	try:
-		datetime.strptime(date, format)
-		return True
-	except ValueError:
-		return False
+    try:
+        date_obj = datetime.strptime(date, format)
+        if date_obj < datetime.now():
+            return False
+        return True
+    except ValueError:
+        return False
 
-
-# compare two dates if d1 is before d2
+# compare two dates if d1 is before d2 and not before the current date
 def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
     try:
         d1 = datetime.strptime(date1, format)
         d2 = datetime.strptime(date2, format)
+        if d1 < datetime.now() or d2 < datetime.now():
+            return None
         return date1 if d1 < d2 else date2
     except ValueError:
         return None
