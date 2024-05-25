@@ -50,6 +50,16 @@ def check_contacto(numero):
     
 
 # check if the date and hour is in the correct format
+def check_date(date, format="%Y-%m-%d %H:%M:%S"):
+    try:
+        date_obj = datetime.strptime(date, format)
+        if date_obj < datetime.now():
+            return False
+        return True
+    except ValueError:
+        return False
+    
+    
 # check if the date is in the correct format and not before the current date
 def check_date2(date, format="%Y-%m-%d"):
     try:
@@ -59,6 +69,7 @@ def check_date2(date, format="%Y-%m-%d"):
         return True
     except ValueError:
         return False
+
 
 # compare two dates if d1 is before d2 and not before the current date
 def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
@@ -70,6 +81,7 @@ def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
         return date1 if d1 < d2 else date2
     except ValueError:
         return None
+
 
 # compare two dates if d1 is before d2 and not before the current date
 def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
@@ -1046,20 +1058,19 @@ def add_prescription():
 
                                             cursor.execute(query, (event_id, prescription_id))
 
-                                            if "medicines" in payload:
-                                                medicines = payload["medicines"]
-                                                for medicine in medicines:
-                                                    if "medicine" in medicine and "posology_dose" in medicine and "posology_frequency" in medicine:
-                                                        medicine_name = medicine["medicine"]
-                                                        posology_dose = medicine["posology_dose"]
-                                                        posology_frequency = medicine["posology_frequency"]
-                                                        posology_query = """INSERT INTO posology (dose, frequency, medicine_id, prescriptions_id)
-                                                                            VALUES (%s, %s, (SELECT id FROM medicine WHERE nome = %s), %s)"""
-                                                        posology_values = (posology_dose, posology_frequency, medicine_name, prescription_id)
+                                            medicines = payload["medicines"]
+                                            for medicine in medicines:
+                                                if "medicine" in medicine and "posology_dose" in medicine and "posology_frequency" in medicine:
+                                                    medicine_name = medicine["medicine"]
+                                                    posology_dose = medicine["posology_dose"]
+                                                    posology_frequency = medicine["posology_frequency"]
+                                                    posology_query = """INSERT INTO posology (dose, frequency, medicine_id, prescriptions_id)
+                                                                        VALUES (%s, %s, (SELECT id FROM medicine WHERE nome = %s), %s)"""
+                                                    posology_values = (posology_dose, posology_frequency, medicine_name, prescription_id)
 
-                                                        cursor.execute(posology_query, posology_values)
-                                                    else:
-                                                        raise ValueError("Incomplete medicine information in payload")
+                                                    cursor.execute(posology_query, posology_values)
+                                                else:
+                                                    raise ValueError("Incomplete medicine information in payload")
 
                                             conn.commit()
                                             message['status'] = StatusCodes['success']
@@ -1171,7 +1182,7 @@ def bill_payment(bill_id):
                                             cursor.execute(query, values)
                                             payments_total = cursor.fetchone()[0]
 
-                                            if payments_total + amount < billing_total:
+                                            if payments_total + amount <= billing_total:
             
                                                 query = """
 													INSERT INTO payment (id, amount, data, type, billing_id)
@@ -1208,11 +1219,14 @@ def bill_payment(bill_id):
 
 
                                                 if remaining_amount > 0:
+                                                    
                                                     message = {
                                                         "status": StatusCodes['success'],
                                                         "results": f"Payment done with success. There is still an unpaid amount of {remaining_amount}."
                                                     }
                                                 else:
+                                                    query = "UPDATE INTO billing SET status = True WHERE id = %s"
+                                                    cursor.execute(query, (bill_id,))
                                                     
                                                     message = {
                                                         "status": StatusCodes['success'],
@@ -1220,7 +1234,7 @@ def bill_payment(bill_id):
                                                     }
                                             else:
                                                 message["status"] = StatusCodes['api_error']
-                                                message["error"] = f"The amount exceeds the total billing. The amount left is: {billing_total - payments_total}."
+                                                message["error"] = f"The amount exceeds the total billing."
                                             
                                         else:
                                             message["status"] = StatusCodes['api_error']
@@ -1258,7 +1272,7 @@ def bill_payment(bill_id):
     return flask.jsonify(message)
 
 
-@app.route("/top3patients", methods=["GET"])
+@app.route("/top3", methods=["GET"])
 def get_top3_patients():
     try:
         payload = flask.request.get_json()
@@ -1449,7 +1463,7 @@ def daily_summary(date):
                         "error": "Only assistants can use this endpoint."
                     })
     except Exception as e:
-        logger.error(f'GET /dbproj/daily/{date} - error: {e}')
+        logger.error(f'GET /daily/{date} - error: {e}')
         return flask.jsonify({
             "status": StatusCodes['error'],
             "errors": str(e)
