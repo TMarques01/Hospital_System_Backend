@@ -9,7 +9,6 @@ import random
 import hashlib 
 from datetime import datetime
 
-
 secret_key = 'VamosTerBoaNota'
 
 app = flask.Flask(__name__)
@@ -69,18 +68,6 @@ def check_date2(date, format="%Y-%m-%d"):
         return True
     except ValueError:
         return False
-
-
-# compare two dates if d1 is before d2 and not before the current date
-def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
-    try:
-        d1 = datetime.strptime(date1, format)
-        d2 = datetime.strptime(date2, format)
-        if d1 < datetime.now() or d2 < datetime.now():
-            return None
-        return date1 if d1 < d2 else date2
-    except ValueError:
-        return None
 
 
 # compare two dates if d1 is before d2 and not before the current date
@@ -860,7 +847,7 @@ def schedule_surgery(hospitalization_id=None):
                                     message["error"] = "Doctor is not available"
                             else:
                                 message["status"] = StatusCodes['api_error']
-                                message["error"] = "Wrong parameter in JSON file for appointment!"
+                                message["error"] = "Wrong parameter in JSON file for Surgeries!"
 
                 except (Exception, psycopg2.DatabaseError) as error:
                     logger.error(f'POST /surgery - error: {error}')
@@ -1020,7 +1007,7 @@ def add_prescription():
                 type = payload["type"]
                 event_id = payload["event_id"]
                 validity = payload["validity"]
-
+                
                 try:
                     with db_connection() as conn:
                         with conn.cursor() as cursor:
@@ -1061,6 +1048,7 @@ def add_prescription():
                                             medicines = payload["medicines"]
                                             for medicine in medicines:
                                                 if "medicine" in medicine and "posology_dose" in medicine and "posology_frequency" in medicine:
+                                                
                                                     medicine_name = medicine["medicine"]
                                                     posology_dose = medicine["posology_dose"]
                                                     posology_frequency = medicine["posology_frequency"]
@@ -1563,4 +1551,3 @@ if __name__ == '__main__':
     port = 8080
     app.run(host=host, debug=True, threaded=True, port=port)
     logger.info(f'API v1.0 online: http://{host}:{port}')
-    
