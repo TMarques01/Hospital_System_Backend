@@ -246,6 +246,11 @@ def is_room_avaliable(cursor, n_room, date_start, date_end):
     else:
         return False
 
+def is_medicine_in_db(cursor, medicine_name):
+	query = "SELECT COUNT(*) FROM medicine WHERE nome = %s"
+	cursor.execute(query, (medicine_name,))
+	count = cursor.fetchone()[0]
+	return count > 0
 
 @app.route('/')
 def landing_page():
@@ -1016,14 +1021,13 @@ def add_prescription():
                                     if check_date2(validity):
                                         if type == "appointment":
                                             query_date = "SELECT date_start FROM appointment WHERE id = %s"
-
                                         elif type == "hospitalization":
                                             query_date = "SELECT date_start FROM hospitalization WHERE id = %s"
 
                                         cursor.execute(query_date, (event_id,))
                                         event_date = cursor.fetchone()[0]
-                                        event_date=event_date.date()
-                                        validity=datetime.strptime(validity, '%Y-%m-%d').date()
+                                        event_date = event_date.date()
+                                        validity = datetime.strptime(validity, '%Y-%m-%d').date()
 
                                         if validity > event_date:
                                             logger.debug('POST /prescription - payload: {}'.format(payload))
@@ -1039,7 +1043,6 @@ def add_prescription():
 
                                             if type == "appointment":
                                                 query = """INSERT INTO appointment_prescriptions (appointment_id, prescriptions_id) VALUES (%s, %s)"""
-
                                             elif type == "hospitalization":
                                                 query = """INSERT INTO hospitalization_prescriptions (hospitalization_id, prescriptions_id) VALUES (%s, %s)"""
 
@@ -1048,8 +1051,20 @@ def add_prescription():
                                             medicines = payload["medicines"]
                                             for medicine in medicines:
                                                 if "medicine" in medicine and "posology_dose" in medicine and "posology_frequency" in medicine:
-                                                
+                                                    if is_medicine_in_db(cursor, medicine["medicine"]) == 0:
+                                                        message['status'] = StatusCodes['api_error']
+                                                        message['message'] = f"Medicine {medicine['medicine']} not in database"
+                                                        conn.rollback()
+                                                        return flask.jsonify(message)
+
                                                     medicine_name = medicine["medicine"]
+
+                                                    if not is_digit(medicine["posology_dose"]) or not is_digit(medicine["posology_frequency"]) or int(medicine["posology_dose"]) <= 0 or int(medicine["posology_frequency"]) <= 0:
+                                                        message['status'] = StatusCodes['api_error']
+                                                        message['message'] = "Dose and frequency must be positive integers"
+                                                        conn.rollback()
+                                                        return flask.jsonify(message)
+                                                
                                                     posology_dose = medicine["posology_dose"]
                                                     posology_frequency = medicine["posology_frequency"]
                                                     posology_query = """INSERT INTO posology (dose, frequency, medicine_id, prescriptions_id)
@@ -1098,6 +1113,7 @@ def add_prescription():
         message["error"] = "Token not found!"
 
     return flask.jsonify(message)
+
 
 
 @app.route("/bills/<int:bill_id>", methods=["POST"])
