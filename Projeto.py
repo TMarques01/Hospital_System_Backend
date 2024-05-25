@@ -2,10 +2,7 @@ import flask
 import logging
 import psycopg2
 import datetime
-import calendar
-import time
 import jwt
-import random
 import hashlib 
 from datetime import datetime
 
@@ -70,12 +67,21 @@ def check_date2(date, format="%Y-%m-%d"):
         return False
 
 
+# check if the date is in the correct format (used in the Daily Report endpoint)
+def check_date3(date, format="%Y-%m-%d"):
+    try:
+        date_obj = datetime.strptime(date, format)
+        return True
+    except ValueError:
+        return False
+
+
 # compare two dates if d1 is before d2 and not before the current date
 def compare_dates(date1, date2, format="%Y-%m-%d %H:%M:%S"):
     try:
         d1 = datetime.strptime(date1, format)
         d2 = datetime.strptime(date2, format)
-        if d1 < datetime.now() or d2 < datetime.now():
+        if d1 < datetime.now() or d2 < datetime.now() or d1.day != d2.day:
             return None
         return date1 if d1 < d2 else date2
     except ValueError:
@@ -246,27 +252,18 @@ def is_room_avaliable(cursor, n_room, date_start, date_end):
     else:
         return False
 
+
+# check if the medicine is in the database
 def is_medicine_in_db(cursor, medicine_name):
 	query = "SELECT COUNT(*) FROM medicine WHERE nome = %s"
 	cursor.execute(query, (medicine_name,))
 	count = cursor.fetchone()[0]
 	return count > 0
 
-@app.route('/')
-def landing_page():
-    return """
-
-    Hello World (Python Native)!  <br/>
-    <br/>
-    Check the sources for instructions on how to use the endpoints!<br/>
-    <br/>
-    BD 2022 Team<br/>
-    <br/>
-    """
-
 # ====================================
 # End Points
 # ====================================
+
 @app.route("/register/<person_type>", methods=["POST"])
 def register(person_type):
 
@@ -739,7 +736,7 @@ def schedule_surgery(hospitalization_id=None):
                                     if are_nurses_available(nurses, date_start, date_end, 1):
                                         if hospitalization_id is None:  # if don't exist a hospitalization
                                             
-                                            cursor.execute("LOCK TABLE hospitalization IN EXCLUSIVE MODE")#nao temos de dar lock á billing em nenhum siito porque so criamos uma, quando se cria a hospitalização, e ja temos o lock para a hospitalização
+                                            cursor.execute("LOCK TABLE hospitalization IN EXCLUSIVE MODE") # nao temos de dar lock á billing em nenhum siito porque so criamos uma, quando se cria a hospitalização, e ja temos o lock para a hospitalização
                                             cursor.execute("SELECT COALESCE(MAX(id), 0) FROM hospitalization;")
                                             hosp_id = cursor.fetchone()[0]
                                             if hosp_id is None:
@@ -781,6 +778,7 @@ def schedule_surgery(hospitalization_id=None):
                                             }
                                                 
                                         else:  # if exist a hospitalization
+                                            
                                             cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
                                             cursor.execute("SELECT COALESCE(MAX(id), 0) FROM surgeries;")
                                             surgery_id = cursor.fetchone()[0]
@@ -806,15 +804,20 @@ def schedule_surgery(hospitalization_id=None):
                                             surgery_id = cursor.fetchone()[0]
                                             
                                             # updating the billing (100€ for each surgery)
+                                            
                                             query = """
-												SELECT *
-												FROM billing
-												WHERE hospitalization_id = %s
-												FOR UPDATE
-											"""
+                                                SELECT *
+                                                FROM billing
+                                                WHERE id = (
+                                                    SELECT billing_id 
+                                                    FROM hospitalization 
+                                                    WHERE id = %s
+                                                )
+                                                FOR UPDATE
+                                            """
                                             
-                                            cursor.execute(query, (hospitalization_id,))  #so bloquear a linha do billing que vamos atualizar
-                                            
+                                            cursor.execute(query, (hospitalization_id,))
+
                                             query_update_billing = "UPDATE billing SET current_payment = current_payment + 100 WHERE id = (SELECT billing_id FROM hospitalization WHERE id = %s)"
                                             values_update_billing = (hospitalization_id,)
                                             
@@ -1115,11 +1118,11 @@ def add_prescription():
     return flask.jsonify(message)
 
 
-
 @app.route("/bills/<int:bill_id>", methods=["POST"])
 def bill_payment(bill_id):
 
     logger.info(f'POST /bills/{bill_id}')
+    
     try:
         payload = flask.request.get_json()
     except:
@@ -1185,7 +1188,8 @@ def bill_payment(bill_id):
                                             values = (bill_id,)
                                             cursor.execute(query, values)
                                             payments_total = cursor.fetchone()[0]
-
+                                            logger.debug(f'payments_total: {payments_total+amount}')
+                                            logger.debug(f'billing_total: {billing_total}')
                                             if payments_total + amount <= billing_total:
             
                                                 query = """
@@ -1204,23 +1208,9 @@ def bill_payment(bill_id):
                                 
                                                 values = (amount, bill_id,)
                                                 cursor.execute(query_update_billing, values)
-                                                conn.commit()
 
                                                 # Check if there are any more unpaid amounts for the given billing_id
                                                 remaining_amount = billing_total - payments_total - amount
-
-                                                if remaining_amount == 0:
-                                                    # Update the billing status to paid
-                                                    query = """
-                                                        UPDATE billing
-                                                        SET status = True
-                                                        WHERE id = %s
-                                                    """
-                                                    values = (bill_id,)
-                                                    cursor.execute(query, values)
-
-                                                conn.commit()
-
 
                                                 if remaining_amount > 0:
                                                     
@@ -1229,13 +1219,14 @@ def bill_payment(bill_id):
                                                         "results": f"Payment done with success. There is still an unpaid amount of {remaining_amount}."
                                                     }
                                                 else:
-                                                    query = "UPDATE INTO billing SET status = True WHERE id = %s"
-                                                    cursor.execute(query, (bill_id,))
+                                                    cursor.execute("UPDATE billing SET status = false WHERE id = %s", (bill_id,))
                                                     
                                                     message = {
                                                         "status": StatusCodes['success'],
                                                         "results": "Payment done with success. The total billing has been paid."
                                                     }
+                                                
+                                                conn.commit()
                                             else:
                                                 message["status"] = StatusCodes['api_error']
                                                 message["error"] = f"The amount exceeds the total billing."
@@ -1397,6 +1388,7 @@ def get_top3_patients():
 @app.route('/daily/<date>', methods=['GET']) #year-month-day
 def daily_summary(date):
     
+    logger.info(f'GET /daily/{date}')
     try:
         payload = flask.request.get_json()
     except:
@@ -1413,8 +1405,8 @@ def daily_summary(date):
                     username = decoded_token["username"]
                     person_type = get_person_type(username)
                     if person_type[1] == "assistant":
-                        if check_date2(date):
-                            
+                        if check_date3(date):
+                            cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
                             query = """
                             SELECT
                                 h.id AS hospitalization_id,
@@ -1423,28 +1415,31 @@ def daily_summary(date):
                                 COUNT(DISTINCT pr.id) AS prescription_count,
                                 COALESCE(SUM(p.amount), 0) AS total_payment_amount
                             FROM hospitalization h
-                            LEFT JOIN surgeries s ON h.id = s.hospitalization_id AND DATE(s.date_start) = DATE(%s)
+                            LEFT JOIN surgeries s ON h.id = s.hospitalization_id AND DATE(h.date_start) = DATE(%s)
                             LEFT JOIN payment p ON h.billing_id = p.billing_id AND DATE(p.data) = DATE(%s)
                             LEFT JOIN hospitalization_prescriptions hp ON h.id = hp.hospitalization_id
-                            LEFT JOIN prescriptions pr ON hp.prescriptions_id = pr.id AND DATE(pr.validity) = DATE(%s)
+                            LEFT JOIN prescriptions pr ON hp.prescriptions_id = pr.id
                             WHERE DATE(h.date_start) = DATE(%s)
-                            GROUP BY h.id;
+                            GROUP BY h.id;                            
                             """
                             
-                            cursor.execute(query, (date,date,date,date,))
-                            result = cursor.fetchone()
+                            cursor.execute(query, (date,date,date,))
+                            results = cursor.fetchall()
                             
-                            if result is not None:
-
-                                return flask.jsonify({
-                                    "status": StatusCodes['success'],
-                                    "results": {
+                            if results is not None:
+                                daily_summary = []
+                                for result in results:
+                                    daily_summary.append({
                                         "hospitalization_id": result[0],
                                         "sugerie_count": result[1],
                                         "payment_count": result[2],
                                         "prescription_count": result[3],
                                         "total_payment_amount": result[4]
-                                    }
+                                    })
+                                    
+                                return flask.jsonify({
+                                    "status": StatusCodes['success'],                        
+                                    "results": daily_summary
                                 })
                             else:
                                 return flask.jsonify({
@@ -1493,7 +1488,7 @@ def montly_report():
             try:
                 with db_connection() as conn:
                     with conn.cursor() as cursor:
-                                                      
+                        cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')                            
                         query = """
                         SELECT 
                             TO_CHAR(s.date_start, 'YYYY-MM') AS month,
