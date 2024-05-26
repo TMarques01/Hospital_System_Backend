@@ -165,6 +165,7 @@ def is_doctor_available(doctor_id, date_start, date_end):
     WHERE doctor_contract_employee_person_id = %s
     AND (date_start, date_end) OVERLAPS (%s, %s)
     LIMIT 1;
+    FOR UPDATE
     """
     try:
         
@@ -193,6 +194,7 @@ def are_nurses_available(nurse_ids, date_start, date_end, type):
             WHERE na.nurse_contract_employee_person_id = %s
             AND (a.date_start, a.date_end) OVERLAPS (%s, %s)
             LIMIT 1;
+            FOR UPDATE
             """
             try:
                 with db_connection() as conn:
@@ -550,8 +552,6 @@ def create_appointment():
 
                                         logger.debug(f'POST /appointment - payload: {payload}')
                                         
-                                        # Get the current maximum appointment ID
-                                        cursor.execute("LOCK TABLE appointment IN EXCLUSIVE MODE")
                                         
                                         # Get the current maximum appointment ID
                                         cursor.execute("SELECT MAX(id) FROM appointment;")
@@ -737,7 +737,6 @@ def schedule_surgery(hospitalization_id=None):
                                     if are_nurses_available(nurses, date_start, date_end, 1):
                                         if hospitalization_id is None:  # if don't exist a hospitalization
                                             
-                                            cursor.execute("LOCK TABLE hospitalization IN EXCLUSIVE MODE") # nao temos de dar lock á billing em nenhum siito porque so criamos uma, quando se cria a hospitalização, e ja temos o lock para a hospitalização
                                             cursor.execute("SELECT COALESCE(MAX(id), 0) FROM hospitalization;")
                                             hosp_id = cursor.fetchone()[0]
                                             if hosp_id is None:
@@ -754,7 +753,7 @@ def schedule_surgery(hospitalization_id=None):
                                             cursor.execute(query, values)
                                             hospitalization_id = cursor.fetchone()[0]
                                             
-                                            cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
+
                                             query = """
                                                 INSERT INTO surgeries (id, date_start, date_end, n_room, type, doctor_contract_employee_person_id, hospitalization_id)
                                                 VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM surgeries), %s, %s, (SELECT COALESCE(MAX(n_room),0) + 1 FROM surgeries), %s, %s, %s)
@@ -780,7 +779,6 @@ def schedule_surgery(hospitalization_id=None):
                                                 
                                         else:  # if exist a hospitalization
                                             
-                                            cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
                                             cursor.execute("SELECT COALESCE(MAX(id), 0) FROM surgeries;")
                                             surgery_id = cursor.fetchone()[0]
                                             if surgery_id is None:
