@@ -199,8 +199,7 @@ def are_nurses_available(nurse_ids, date_start, date_end, type):
             try:
                 with db_connection() as conn:
                     with conn.cursor() as cursor:
-                        cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
-                		cursor.execute("LOCK TABLE appointment IN EXCLUSIVE MODE")
+
                         cursor.execute(query, (nurse_id[0], date_start, date_end, nurse_id[0], date_start, date_end))
                         row = cursor.fetchone()
                         if row is not None:
@@ -226,8 +225,7 @@ def are_nurses_available(nurse_ids, date_start, date_end, type):
             try:
                 with db_connection() as conn:
                     with conn.cursor() as cursor:
-                        cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
-                		cursor.execute("LOCK TABLE appointment IN EXCLUSIVE MODE")
+
                         cursor.execute(query, (nurse_id, date_start, date_end, nurse_id, date_start, date_end))
                         row = cursor.fetchone()
                         if row is not None:
