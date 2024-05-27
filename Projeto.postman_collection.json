@@ -13,7 +13,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\r\n    \"nome\": \"Maria Costa\",\r\n    \"contact\": \"931234567\",\r\n    \"email\": \"mariacosta@example.com\",\r\n    \"address\": \"Avenida da Liberdade, 45, Porto, 4000-322\",\r\n    \"password\": \"senhaultrasegura456\",\r\n    \"username\": \"mariacosta\",\r\n    \"historic\": \"Histórico de asma\"\r\n}\r\n",
+					"raw": "{\r\n    \"nome\": \"Maria Costa\",\r\n    \"contact\": \"931234568\",\r\n    \"email\": \"mariacosta@example.comm\",\r\n    \"address\": \"Avenida da Liberdade, 45, Porto, 4000-322\",\r\n    \"password\": \"senhaultrasegura456\",\r\n    \"username\": \"mariacostaa\",\r\n    \"historic\": \"Histórico de asma\"\r\n}\r\n",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -71,7 +71,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\r\n    \"nome\": \"Ana Pereira\",\r\n    \"contact\": \"921234567\",\r\n    \"email\": \"anapereira@example.com\",\r\n    \"address\": \"Rua da Alegria, 45, Porto, 4000-322\",\r\n    \"password\": \"senhasegura789\",\r\n    \"username\": \"anapereira\",\r\n    \"data\": \"2024-05-19 08:30:00\",\r\n    \"duration\": \"2025-05-19\",\r\n    \"license\": \"A12345\"\r\n}\r\n",
+					"raw": "{\r\n    \"nome\": \"Ana Pereira\",\r\n    \"contact\": \"921234567\",\r\n    \"email\": \"anapereira@example.com\",\r\n    \"address\": \"Rua da Alegria, 45, Porto, 4000-322\",\r\n    \"password\": \"senhasegura789\",\r\n    \"username\": \"anapereira\",\r\n    \"data\": \"2024-05-19 08:30:00\",\r\n    \"duration\": \"2025-05-19\",\r\n    \"license\": \"12345\"\r\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -100,7 +100,7 @@
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\r\n    \"nome\": \"Carlos Mendes\",\r\n    \"contact\": \"935678912\",\r\n    \"email\": \"carlosmendes@example.com\",\r\n    \"address\": \"Avenida dos Aliados, 100, Porto, 4000-042\",\r\n    \"password\": \"senhasegura456\",\r\n    \"username\": \"carlosmendes\",\r\n    \"data\": \"2024-05-19 08:30:00\",\r\n    \"duration\": \"2026-05-19\",\r\n    \"category\": \"Senior\"\r\n}\r\n",
+					"raw": "{\r\n    \"nome\": \"João Silva\",\r\n    \"contact\": \"912345678\",\r\n    \"email\": \"joaosilva@example.com\",\r\n    \"address\": \"Rua de Santa Catarina, 200, Porto, 4000-000\",\r\n    \"password\": \"senhaconfiavel123\",\r\n    \"username\": \"joaosilva\",\r\n    \"data\": \"2025-06-20 09:00:00\",\r\n    \"duration\": \"2027-06-20\",\r\n    \"category\": \"Junior\"\r\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -117,6 +117,310 @@
 					"path": [
 						"register",
 						"nurse"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Login",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"username\": \"anasantosa\",\r\n    \"password\": \"senhaultrasegura458\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/user",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"user"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Appointment",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Impvc2VmZXJuYW5kZXMifQ.s9h3XzI4dVpdabOUnwPBtz6cFp9dg2soB0jOZbZ2FzY\",\r\n    \"doctor\": 11,\r\n    \"date_start\": \"2024-05-25 23:30:00\",\r\n    \"date_end\": \"2024-05-25 23:45:00\",\r\n    \"n_room\": 13,\r\n    \"pacient\" : 5,\r\n    \"nurse\": []\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/appointment",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"appointment"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "See appointments",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Impvc2VmZXJuYW5kZXMifQ.s9h3XzI4dVpdabOUnwPBtz6cFp9dg2soB0jOZbZ2FzY\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/appointments/0",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"appointments",
+						"0"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Schedule Surgery",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFuYXBlcmVpcmEifQ.DM9B8FmNs35pLyvkLT5w5oUK_wtIH62_ZHkt2WjaaxE\",\r\n    \"pacient_id\": 0,\r\n    \"doctor_id\": 1,\r\n    \"date_start\": \"2022-04-23 10:00:00\",\r\n    \"date_end\": \"2022-04-23 12:00:00\",\r\n    \"type_surgery\": \"Appendectomy\",\r\n    \"nurse\":[\r\n            [3, \"Nurse Role 1\"],\r\n            [4, \"Nurse Role 2\"]\r\n            ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/surgery",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"surgery"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Schedule Surgery with ID",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFuYXBlcmVpcmEifQ.DM9B8FmNs35pLyvkLT5w5oUK_wtIH62_ZHkt2WjaaxE\",\r\n    \"pacient_id\": 0,\r\n    \"doctor_id\": 1,\r\n    \"date_start\": \"2022-04-21 10:00:00\",\r\n    \"date_end\": \"2022-04-21 12:00:00\",\r\n    \"type_surgery\": \"Appendectomy\",\r\n    \"nurse\":[\r\n            [3, \"Nurse Role 1\"]\r\n            ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/surgery/1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"surgery",
+						"1"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Execute Payments",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InBlZHJvYWx2ZXNhIn0.3MtaWhfqz8XQZTOhEHi1lyrT-MQTkD2IoDqSkjAP0lI\" ,\r\n    \"amount\": 2,\r\n    \"payment_method\": \"cash\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/bills/9",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"bills",
+						"9"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Add prescription",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InBlZHJvb2xpdmVpcmEifQ.JK6__TIsdm3tkzH8XiXH3bHK4TuvBUcwItuAJNlNEYE\",\r\n    \"type\": \"appointment\",\r\n    \"event_id\": 1,\r\n    \"validity\": \"2024-10-20\",\r\n    \"medicines\": [\r\n        {\r\n            \"medicine\": \"Tylenol\",\r\n            \"posology_dose\": 200,\r\n            \"posology_frequency\": 2\r\n        },\r\n        {\r\n            \"medicine\": \"Prozac\",\r\n            \"posology_dose\": 650,\r\n            \"posology_frequency\": 3\r\n        }\r\n    ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/prescription",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"prescription"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get prescription",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Im1hcmlhY29zdGFhIn0.m-87VpTpGVmX3McM5-b17_kfcscCclv4FTJpv1GIEUg\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/prescriptions/0",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"prescriptions",
+						"0"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "TOP3",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFuYXBlcmVpcmEifQ.DM9B8FmNs35pLyvkLT5w5oUK_wtIH62_ZHkt2WjaaxE\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/top3",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"top3"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Daily Summary",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/daily/2022-01-09",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"daily",
+						"2022-01-09"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Monthly report",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/report",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"report"
 					]
 				}
 			},
