@@ -165,12 +165,13 @@ def is_doctor_available(doctor_id, date_start, date_end):
     WHERE doctor_contract_employee_person_id = %s
     AND (date_start, date_end) OVERLAPS (%s, %s)
     LIMIT 1;
-    FOR UPDATE
     """
     try:
         
         with db_connection() as conn:
             with conn.cursor() as cursor:
+                cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
+                cursor.execute("LOCK TABLE appointment IN EXCLUSIVE MODE")
                 cursor.execute(query, (doctor_id, date_start, date_end, doctor_id, date_start, date_end))
                 row = cursor.fetchone()
                 return row is None
@@ -194,11 +195,12 @@ def are_nurses_available(nurse_ids, date_start, date_end, type):
             WHERE na.nurse_contract_employee_person_id = %s
             AND (a.date_start, a.date_end) OVERLAPS (%s, %s)
             LIMIT 1;
-            FOR UPDATE
             """
             try:
                 with db_connection() as conn:
                     with conn.cursor() as cursor:
+                        cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
+                		cursor.execute("LOCK TABLE appointment IN EXCLUSIVE MODE")
                         cursor.execute(query, (nurse_id[0], date_start, date_end, nurse_id[0], date_start, date_end))
                         row = cursor.fetchone()
                         if row is not None:
@@ -224,6 +226,8 @@ def are_nurses_available(nurse_ids, date_start, date_end, type):
             try:
                 with db_connection() as conn:
                     with conn.cursor() as cursor:
+                        cursor.execute("LOCK TABLE surgeries IN EXCLUSIVE MODE")
+                		cursor.execute("LOCK TABLE appointment IN EXCLUSIVE MODE")
                         cursor.execute(query, (nurse_id, date_start, date_end, nurse_id, date_start, date_end))
                         row = cursor.fetchone()
                         if row is not None:
